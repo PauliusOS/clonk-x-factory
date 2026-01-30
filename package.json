@@ -1,0 +1,38 @@
+{
+  "name": "clonk-x-factory",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PauliusOS/clonk-x-factory.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/PauliusOS/clonk-x-factory/issues"
+  },
+  "homepage": "https://github.com/PauliusOS/clonk-x-factory#readme",
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.1.0",
+    "axios": "^1.13.4",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "ts-loader": "^9.5.4",
+    "ts-node": "^10.9.2"
+  }
+}
