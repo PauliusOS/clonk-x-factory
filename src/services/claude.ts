@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -13,8 +14,8 @@ export interface GeneratedApp {
   description: string;
 }
 
-export async function generateApp(idea: string): Promise<GeneratedApp> {
-  console.log(`🤖 Generating app for idea: ${idea}`);
+export async function generateApp(idea: string, imageUrls?: string[]): Promise<GeneratedApp> {
+  console.log(`🤖 Generating app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}`);
 
   const prompt = `You are an expert full-stack developer. Generate a complete, production-ready web application for: "${idea}"
 
@@ -74,13 +75,32 @@ Important:
 - All code must be valid and build successfully
 - Keep it simple but polished`;
 
+  // Build message content: images first (if any), then the text prompt
+  const contentBlocks: ContentBlockParam[] = [];
+
+  if (imageUrls?.length) {
+    for (const url of imageUrls) {
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'url', url },
+      });
+    }
+    // Add context about the images
+    contentBlocks.push({
+      type: 'text',
+      text: 'The above image(s) were attached to the tweet. Use them as visual reference for the app design — they may be wireframes, mockups, screenshots, or inspiration images. Try to match the layout, colors, and style shown.',
+    });
+  }
+
+  contentBlocks.push({ type: 'text', text: prompt });
+
   const response = await client.messages.create({
     model: 'claude-opus-4-5-20251101',
     max_tokens: 16384,
     messages: [
       {
         role: 'user',
-        content: prompt,
+        content: contentBlocks,
       },
     ],
   });

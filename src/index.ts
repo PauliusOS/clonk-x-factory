@@ -39,9 +39,10 @@ async function pollMentions() {
 
     const params: Record<string, string> = {
       max_results: '10',
-      'tweet.fields': 'author_id,created_at',
+      'tweet.fields': 'author_id,created_at,attachments',
+      'media.fields': 'url,preview_image_url,type',
       'user.fields': 'username',
-      expansions: 'author_id',
+      expansions: 'author_id,attachments.media_keys',
     };
 
     if (lastSeenTweetId) {
@@ -60,6 +61,7 @@ async function pollMentions() {
 
     const tweets = response.data.data || [];
     const users = response.data.includes?.users || [];
+    const media = response.data.includes?.media || [];
 
     if (tweets.length === 0) {
       return;
@@ -109,7 +111,17 @@ async function pollMentions() {
         continue;
       }
 
-      console.log(`💡 App idea: ${idea}`);
+      // Extract image URLs from tweet attachments
+      const imageUrls: string[] = [];
+      const mediaKeys = tweet.attachments?.media_keys || [];
+      for (const key of mediaKeys) {
+        const mediaItem = media.find((m: { media_key: string }) => m.media_key === key);
+        if (mediaItem && mediaItem.type === 'photo' && mediaItem.url) {
+          imageUrls.push(mediaItem.url);
+        }
+      }
+
+      console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}`);
 
       // Mark as processing
       processingTweets.add(tweet.id);
@@ -119,6 +131,7 @@ async function pollMentions() {
         idea,
         tweetId: tweet.id,
         userId: tweet.author_id,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       })
         .catch((error: any) => {
           console.error('Pipeline error:', error.message || error);

@@ -8,6 +8,7 @@ export interface PipelineInput {
   idea: string;
   tweetId: string;
   userId: string;
+  imageUrls?: string[];
 }
 
 export async function processTweetToApp(input: PipelineInput): Promise<void> {
@@ -16,7 +17,7 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
   try {
     // Step 1: Generate app code with Claude
     console.log('1️⃣ Generating app code...');
-    const generatedApp = await generateApp(input.idea);
+    const generatedApp = await generateApp(input.idea, input.imageUrls);
 
     // Step 2: Deploy to Vercel
     console.log('\n2️⃣ Deploying to Vercel...');
