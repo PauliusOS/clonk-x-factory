@@ -155,6 +155,7 @@ async function pollMentions() {
         idea,
         tweetId: tweet.id,
         userId: tweet.author_id,
+        username,
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         parentContext,
       })

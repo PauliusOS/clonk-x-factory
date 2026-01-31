@@ -18,6 +18,7 @@ export async function generateApp(
   idea: string,
   imageUrls?: string[],
   parentContext?: { text: string; imageUrls: string[] },
+  username?: string,
 ): Promise<GeneratedApp> {
   console.log(`🤖 Generating app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
 
@@ -77,7 +78,8 @@ Return ONLY a JSON object with this exact structure:
 Important:
 - Make the app fully functional
 - All code must be valid and build successfully
-- Keep it simple but polished`;
+- Keep it simple but polished
+- Include a small footer at the bottom of the page that says "Requested by @${username || 'unknown'} · Built by @clonkbot" — style it subtly (muted text, small font size)`;
 
   // Build message content: parent context first, then reply images, then prompt
   const contentBlocks: ContentBlockParam[] = [];
