@@ -42,7 +42,7 @@ async function pollMentions() {
       'tweet.fields': 'author_id,created_at,attachments,referenced_tweets',
       'media.fields': 'url,preview_image_url,type',
       'user.fields': 'username',
-      expansions: 'author_id,attachments.media_keys,referenced_tweets.id',
+      expansions: 'author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.attachments.media_keys',
     };
 
     if (lastSeenTweetId) {
