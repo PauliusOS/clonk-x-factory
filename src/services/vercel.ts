@@ -35,11 +35,8 @@ export async function deployToVercel(
     }
   );
 
-  // Use the project alias (clean URL) instead of the deployment-specific URL
-  const aliases = deployment.data.alias;
-  const deploymentUrl = aliases && aliases.length > 0
-    ? `https://${aliases[0]}`
-    : `https://${deployment.data.url}`;
+  // Use the clean project URL (accessible without Vercel auth)
+  const deploymentUrl = `https://${projectName}.vercel.app`;
 
   console.log(`✅ Deployed to Vercel: ${deploymentUrl}`);
 
