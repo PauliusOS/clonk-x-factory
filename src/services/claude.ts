@@ -122,12 +122,14 @@ export async function generateApp(
   }
 
   let result: SDKResultSuccess | null = null;
+  let lastError: string | null = null;
 
   for await (const message of query({
     prompt,
     options: {
       model: 'claude-opus-4-5-20251101',
       cwd: process.cwd(),
+      env: process.env as Record<string, string>,
       settingSources: ['project'],
       tools: ['Skill'],
       allowedTools: ['Skill'],
@@ -140,15 +142,24 @@ export async function generateApp(
         type: 'json_schema',
         schema: OUTPUT_SCHEMA,
       },
+      stderr: (data: string) => {
+        console.error(`[claude-code stderr] ${data}`);
+      },
     },
   })) {
-    if (message.type === 'result' && message.subtype === 'success') {
-      result = message as SDKResultSuccess;
+    if (message.type === 'result') {
+      if (message.subtype === 'success') {
+        result = message as SDKResultSuccess;
+      } else {
+        const errMsg = message as any;
+        lastError = errMsg.errors?.join(', ') || errMsg.subtype || 'unknown';
+        console.error(`❌ Agent SDK result error: ${lastError}`);
+      }
     }
   }
 
   if (!result?.structured_output) {
-    throw new Error('Failed to get structured output from Claude');
+    throw new Error(`Failed to get structured output from Claude: ${lastError || 'unknown error'}`);
   }
 
   const generatedApp = result.structured_output as GeneratedApp;
