@@ -31,9 +31,11 @@ Requirements:
 CRITICAL rules for generated config files:
 - tsconfig.json must NOT reference any other tsconfig files (no "references", no "extends" pointing to tsconfig.node.json)
 - tsconfig.json should be a single self-contained config
+- tsconfig.json MUST include "noUnusedLocals": false and "noUnusedParameters": false (otherwise builds fail)
 - vite.config.ts should use a simple setup with just the react plugin
 - package.json must include all dependencies needed (react, react-dom, @types/react, @types/react-dom, typescript, vite, @vitejs/plugin-react)
 - package.json "build" script must be "tsc && vite build"
+- All generated code must have zero TypeScript errors — do not declare variables you don't use
 
 Return ONLY a JSON object with this exact structure:
 {
