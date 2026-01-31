@@ -1,4 +1,5 @@
 import axios from 'axios';
+import crypto from 'crypto';
 
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -8,13 +9,17 @@ export async function createGitHubRepo(
   description: string,
   files: { path: string; content: string }[]
 ): Promise<string> {
-  console.log(`📦 Creating GitHub repo: ${appName}`);
+  // Append short random suffix to avoid name collisions
+  const suffix = crypto.randomBytes(3).toString('hex');
+  const repoName = `${appName}-${suffix}`;
+
+  console.log(`📦 Creating GitHub repo: ${repoName}`);
 
   // Create repository
   const repoResponse = await axios.post(
     `${GITHUB_API}/user/repos`,
     {
-      name: appName,
+      name: repoName,
       description: description,
       public: true,
       auto_init: false,
