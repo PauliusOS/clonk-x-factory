@@ -21,6 +21,10 @@ let lastSeenTweetId = '';
 // Set of tweet IDs currently being processed to prevent double-processing
 const processingTweets = new Set<string>();
 
+// Polling interval: 2 minutes (free tier allows ~1 req/15 min for mentions)
+// 2 min = ~720 polls/day, but most will use since_id so only new tweets count against the 100/mo cap
+const POLL_INTERVAL_MS = 2 * 60 * 1000;
+
 async function pollMentions() {
   try {
     const bearerToken = process.env.X_BEARER_TOKEN;
@@ -125,13 +129,13 @@ async function pollMentions() {
   }
 }
 
-// Poll every 30 seconds
-setInterval(pollMentions, 30000);
+// Poll on interval
+setInterval(pollMentions, POLL_INTERVAL_MS);
 
 // Initial poll on startup
 pollMentions();
 
 app.listen(PORT, () => {
   console.log(`🚀 Clonk bot server running on port ${PORT}`);
-  console.log(`🔄 Polling for mentions every 30 seconds`);
+  console.log(`🔄 Polling for mentions every ${POLL_INTERVAL_MS / 1000}s`);
 });
