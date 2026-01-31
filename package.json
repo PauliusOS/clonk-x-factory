@@ -25,6 +25,7 @@
   },
   "homepage": "https://github.com/PauliusOS/clonk-x-factory#readme",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.27",
     "@anthropic-ai/sdk": "^0.72.1",
     "@types/express": "^5.0.6",
     "@types/node": "^25.1.0",
