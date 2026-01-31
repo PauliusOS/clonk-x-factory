@@ -1,6 +1,6 @@
 # Clonk X Factory
 
-Clonk X Factory is an autonomous X (Twitter) bot that turns tweets into deployed web applications. When someone mentions **@clonkbot** with the word "build" and an app idea, the bot generates a complete React + TypeScript + Vite application using Claude (Sonnet 4), deploys it to Vercel, pushes the source code to a public GitHub repository, and replies to the original tweet with both links.
+Clonk X Factory is an autonomous X (Twitter) bot that turns tweets into deployed web applications. When someone mentions **@clonkbot** with the word "build" and an app idea, the bot generates a complete React + TypeScript + Vite application using Claude Opus 4.5, deploys it to Vercel, pushes the source code to a public GitHub repository, and replies to the original tweet with both links.
 
 ## Architecture
 
@@ -21,7 +21,7 @@ Clonk X Factory is an autonomous X (Twitter) bot that turns tweets into deployed
   +------------------------------------------+
   |          Pipeline (background)           |
   |                                          |
-  |  1. Claude Sonnet 4 -- generate app      |
+  |  1. Claude Opus 4.5 -- generate app      |
   |  2. Vercel API -- deploy to production   |
   |  3. GitHub API -- create public repo     |
   |  4. X API (OAuth 1.0a) -- reply tweet    |
@@ -40,7 +40,7 @@ Clonk X Factory is an autonomous X (Twitter) bot that turns tweets into deployed
 | **Bot source repo** | `PauliusOS/clonk-x-factory` (private/personal account) |
 | **Generated app repos** | `clonkbot/<app-name>` (public, one repo per app) |
 | **Generated app hosting** | Vercel, under the `clonkbot` Vercel account |
-| **AI model** | Claude Sonnet 4 (`claude-sonnet-4-20250514`) via Anthropic SDK |
+| **AI model** | Claude Opus 4.5 (`claude-opus-4-5-20251101`) via Anthropic SDK |
 | **Runtime** | Node.js >= 22, TypeScript, Express |
 
 ### Project Structure
@@ -66,7 +66,7 @@ The pipeline is defined in `src/pipeline.ts` and executes four steps sequentiall
 
 ### Step 1: Generate App (Claude)
 
-The user's app idea (extracted from the tweet text) is sent to Claude Sonnet 4 with a detailed prompt. Claude returns a JSON object containing:
+The user's app idea (extracted from the tweet text) is sent to Claude Opus 4.5 with a detailed prompt. Claude returns a JSON object containing:
 
 - `appName` -- a kebab-case project name
 - `description` -- a one-sentence summary
@@ -76,11 +76,11 @@ The generated app is always a client-side-only React 18 + TypeScript + Vite SPA 
 
 ### Step 2: Deploy to Vercel
 
-The generated files are sent to the Vercel API v13 `/deployments` endpoint as plain text. Vercel runs `npm install` and `npm run build` (which executes `tsc && vite build`). The deployment URL is returned immediately, before the build finishes.
+The generated files are sent to the Vercel API v13 `/deployments` endpoint as plain text. Each deployment creates a new Vercel project with a random suffix (e.g., `pomodoro-timer-a3f1b2`) to avoid project name collisions. Vercel runs `npm install` and `npm run build` (which executes `tsc && vite build`). The bot uses the clean project alias URL (e.g., `pomodoro-timer-a3f1b2.vercel.app`) rather than the deployment-specific hash URL.
 
 ### Step 3: Create GitHub Repo
 
-A new public repository is created under the `clonkbot` GitHub account. Each file is uploaded individually via the GitHub Contents API, resulting in one commit per file. Files are base64-encoded for the API.
+A new public repository is created under the `clonkbot` GitHub account with a random suffix appended to the name (e.g., `pomodoro-timer-a3f1b2`) to prevent name collisions. Each file is uploaded individually via the GitHub Contents API, resulting in one commit per file. Files are base64-encoded for the API.
 
 ### Step 4: Reply to Tweet
 
@@ -140,7 +140,7 @@ Note: `lastSeenTweetId` resets to empty on every deploy. The `startupTime` check
 | Vercel URL returned before build completes | The reply may contain a URL that is not yet live |
 | No input sanitization | Prompt injection via tweet text is theoretically possible |
 | `appName` used unsanitized in API URLs | Malformed names from Claude could cause API failures |
-| No duplicate repo name handling | If Claude generates an `appName` that already exists under `clonkbot`, GitHub returns 422 |
+| No duplicate repo name handling | Mitigated by random suffixes on both GitHub and Vercel names, but a collision is still theoretically possible |
 | No persistent storage | Everything is in-memory; all state resets on deploy |
 
 ## Key Design Decisions

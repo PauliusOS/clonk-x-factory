@@ -138,7 +138,7 @@ Uses the Anthropic SDK to generate a complete web application from a text descri
 
 | Setting | Value | Reason |
 |---|---|---|
-| Model | `claude-sonnet-4-20250514` | Good balance of speed, cost, and code quality |
+| Model | `claude-opus-4-5-20251101` | Best code quality for generating complete, production-ready apps |
 | `max_tokens` | `16384` | Multi-file apps with full source code require high token limits |
 
 ### Generated App Interface
@@ -163,6 +163,7 @@ The prompt instructs Claude to generate a production-ready application with thes
 **Critical constraints** (learned from production failures):
 
 - `tsconfig.json` must be completely self-contained. It must not use `references` or `extends` pointing to files like `tsconfig.node.json`. Standard `vite init` templates include these references, and when the referenced file is missing, the Vercel build fails.
+- `tsconfig.json` must include `"noUnusedLocals": false` and `"noUnusedParameters": false` to prevent TS6133 errors from failing the Vercel build.
 - `vite.config.ts` must use a minimal setup with only the React plugin.
 - `package.json` must list all dependencies explicitly.
 
@@ -238,9 +239,13 @@ Uses a Bearer token via the `Authorization` header:
 Authorization: Bearer <VERCEL_API_TOKEN>
 ```
 
+### Unique Project Names
+
+Each deployment creates a new Vercel project with a random 6-character hex suffix appended to the app name (e.g., `pomodoro-timer-a3f1b2`). This prevents project name collisions when multiple users request similar apps.
+
 ### Return Value
 
-Returns the deployment URL in the format `https://<deployment-id>.vercel.app`.
+Returns the clean project alias URL (e.g., `https://pomodoro-timer-a3f1b2.vercel.app`) from `deployment.data.alias[0]`, falling back to the deployment-specific hash URL if no alias is available.
 
 **Important**: The URL is returned as soon as Vercel accepts the deployment request. The build may still be in progress or may ultimately fail. The bot does not poll for build completion.
 
@@ -268,12 +273,14 @@ Request body:
 
 ```json
 {
-  "name": "<appName>",
+  "name": "<appName>-<randomSuffix>",
   "description": "<description>",
   "public": true,
   "auto_init": false
 }
 ```
+
+A random 6-character hex suffix is appended to the app name (e.g., `pomodoro-timer-a3f1b2`) to prevent name collisions when multiple users request similar apps.
 
 The `auto_init: false` setting means no initial commit (no README, no .gitignore). This avoids merge conflicts when uploading files.
 
@@ -314,7 +321,7 @@ Error logging is redacted: only the HTTP status and status text are logged, neve
 
 ### Error Cases
 
-- Duplicate repo name: GitHub returns 422 Unprocessable Entity. There is no retry or name-suffix logic.
+- Duplicate repo name: Mitigated by random hex suffix, but a collision is still theoretically possible (GitHub returns 422).
 - Invalid token or insufficient permissions: GitHub returns 401/403.
 - File path issues: Paths with special characters may cause 422 errors.
 
