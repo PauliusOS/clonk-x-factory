@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV HOME=/home/node
 
 # Install Claude Code CLI globally (required by @anthropic-ai/claude-agent-sdk)
 RUN npm install -g @anthropic-ai/claude-code
@@ -35,4 +36,7 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
-CMD ["node", "dist/index.js"]
+# Ensure entrypoint is executable
+RUN chmod +x /app/entrypoint.sh
+
+CMD ["/app/entrypoint.sh"]
