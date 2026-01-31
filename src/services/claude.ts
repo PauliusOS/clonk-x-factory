@@ -14,8 +14,12 @@ export interface GeneratedApp {
   description: string;
 }
 
-export async function generateApp(idea: string, imageUrls?: string[]): Promise<GeneratedApp> {
-  console.log(`🤖 Generating app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}`);
+export async function generateApp(
+  idea: string,
+  imageUrls?: string[],
+  parentContext?: { text: string; imageUrls: string[] },
+): Promise<GeneratedApp> {
+  console.log(`🤖 Generating app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
 
   const prompt = `You are an expert full-stack developer. Generate a complete, production-ready web application for: "${idea}"
 
@@ -75,8 +79,28 @@ Important:
 - All code must be valid and build successfully
 - Keep it simple but polished`;
 
-  // Build message content: images first (if any), then the text prompt
+  // Build message content: parent context first, then reply images, then prompt
   const contentBlocks: ContentBlockParam[] = [];
+
+  // Include parent tweet context if this mention was a reply
+  if (parentContext) {
+    contentBlocks.push({
+      type: 'text',
+      text: `The user replied to the following tweet with their build request. Use this original post as the primary context for what to build:\n\n"${parentContext.text}"`,
+    });
+    for (const url of parentContext.imageUrls) {
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'url', url },
+      });
+    }
+    if (parentContext.imageUrls.length) {
+      contentBlocks.push({
+        type: 'text',
+        text: 'The above image(s) were attached to the original post. Use them as visual reference for the app design.',
+      });
+    }
+  }
 
   if (imageUrls?.length) {
     for (const url of imageUrls) {

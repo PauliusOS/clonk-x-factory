@@ -39,10 +39,10 @@ async function pollMentions() {
 
     const params: Record<string, string> = {
       max_results: '10',
-      'tweet.fields': 'author_id,created_at,attachments',
+      'tweet.fields': 'author_id,created_at,attachments,referenced_tweets',
       'media.fields': 'url,preview_image_url,type',
       'user.fields': 'username',
-      expansions: 'author_id,attachments.media_keys',
+      expansions: 'author_id,attachments.media_keys,referenced_tweets.id',
     };
 
     if (lastSeenTweetId) {
@@ -62,6 +62,7 @@ async function pollMentions() {
     const tweets = response.data.data || [];
     const users = response.data.includes?.users || [];
     const media = response.data.includes?.media || [];
+    const includedTweets = response.data.includes?.tweets || [];
 
     if (tweets.length === 0) {
       return;
@@ -121,6 +122,29 @@ async function pollMentions() {
         }
       }
 
+      // Extract parent tweet context if this mention is a reply
+      let parentContext: { text: string; imageUrls: string[] } | undefined;
+      const repliedToRef = tweet.referenced_tweets?.find(
+        (ref: { type: string }) => ref.type === 'replied_to'
+      );
+      if (repliedToRef) {
+        const parentTweet = includedTweets.find(
+          (t: { id: string }) => t.id === repliedToRef.id
+        );
+        if (parentTweet) {
+          const parentImageUrls: string[] = [];
+          const parentMediaKeys = parentTweet.attachments?.media_keys || [];
+          for (const key of parentMediaKeys) {
+            const mediaItem = media.find((m: { media_key: string }) => m.media_key === key);
+            if (mediaItem && mediaItem.type === 'photo' && mediaItem.url) {
+              parentImageUrls.push(mediaItem.url);
+            }
+          }
+          parentContext = { text: parentTweet.text, imageUrls: parentImageUrls };
+          console.log(`🔗 Parent tweet: ${parentTweet.text.substring(0, 80)}...${parentImageUrls.length ? ` (${parentImageUrls.length} image(s))` : ''}`);
+        }
+      }
+
       console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}`);
 
       // Mark as processing
@@ -132,6 +156,7 @@ async function pollMentions() {
         tweetId: tweet.id,
         userId: tweet.author_id,
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        parentContext,
       })
         .catch((error: any) => {
           console.error('Pipeline error:', error.message || error);
