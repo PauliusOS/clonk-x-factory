@@ -20,13 +20,20 @@ export async function generateApp(idea: string): Promise<GeneratedApp> {
 
 Requirements:
 - Frontend: React 18 + TypeScript + Vite
-- Styling: Tailwind CSS (via CDN)
+- Styling: Tailwind CSS (via CDN in index.html)
 - Must be a single-page application (SPA)
 - No backend/API required (client-side only)
 - No external APIs or paid services
 - Clean, modern UI design
-- Must work immediately when deployed to Vercel
+- Must work immediately when deployed to Vercel with "npm run build"
 - Include responsive design
+
+CRITICAL rules for generated config files:
+- tsconfig.json must NOT reference any other tsconfig files (no "references", no "extends" pointing to tsconfig.node.json)
+- tsconfig.json should be a single self-contained config
+- vite.config.ts should use a simple setup with just the react plugin
+- package.json must include all dependencies needed (react, react-dom, @types/react, @types/react-dom, typescript, vite, @vitejs/plugin-react)
+- package.json "build" script must be "tsc && vite build"
 
 Return ONLY a JSON object with this exact structure:
 {
@@ -35,7 +42,7 @@ Return ONLY a JSON object with this exact structure:
   "files": [
     {
       "path": "index.html",
-    "content": "..."
+      "content": "..."
     },
     {
       "path": "package.json",
@@ -62,9 +69,8 @@ Return ONLY a JSON object with this exact structure:
 
 Important:
 - Make the app fully functional
-- Use Tailwind via CDN in index.html
-- Keep it simple but polished
-- All code must be valid and working`;
+- All code must be valid and build successfully
+- Keep it simple but polished`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
