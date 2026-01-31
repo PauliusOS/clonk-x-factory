@@ -51,8 +51,11 @@ export async function createGitHubRepo(
         }
       );
       console.log(`  ✓ Uploaded ${file.path}`);
-    } catch (error) {
-      console.error(`  ✗ Failed to upload ${file.path}:`, error);
+    } catch (error: any) {
+      const msg = error.response
+        ? `${error.response.status} ${error.response.statusText || ''}`
+        : error.message;
+      console.error(`  ✗ Failed to upload ${file.path}: ${msg}`);
     }
   }
 

@@ -17,15 +17,46 @@ app.get('/health', (_req, res) => {
 
 // Store last seen tweet ID to avoid duplicates
 let lastSeenTweetId = '';
+let initialized = false;
 
 // Set of tweet IDs currently being processed to prevent double-processing
 const processingTweets = new Set<string>();
 
 // Polling interval: 2 minutes (free tier allows ~1 req/15 min for mentions)
-// 2 min = ~720 polls/day, but most will use since_id so only new tweets count against the 100/mo cap
 const POLL_INTERVAL_MS = 2 * 60 * 1000;
 
+// On first run, just grab the latest mention ID so we don't reprocess old tweets after a deploy
+async function initializeLastSeenId() {
+  try {
+    const bearerToken = process.env.X_BEARER_TOKEN;
+    const botUserId = process.env.X_BOT_USER_ID;
+
+    if (!bearerToken || !botUserId) return;
+
+    const response = await axios.get(
+      `https://api.x.com/2/users/${botUserId}/mentions`,
+      {
+        headers: { Authorization: `Bearer ${bearerToken}` },
+        params: { max_results: '5' },
+      }
+    );
+
+    const tweets = response.data.data || [];
+    if (tweets.length > 0) {
+      lastSeenTweetId = tweets[0].id;
+      console.log(`📌 Initialized lastSeenTweetId: ${lastSeenTweetId}`);
+    }
+  } catch (error: any) {
+    if (error.response?.status !== 429) {
+      console.error('Failed to initialize lastSeenTweetId:', error.message || error);
+    }
+  }
+  initialized = true;
+}
+
 async function pollMentions() {
+  if (!initialized) return;
+
   try {
     const bearerToken = process.env.X_BEARER_TOKEN;
     const botUserId = process.env.X_BOT_USER_ID;
@@ -113,8 +144,8 @@ async function pollMentions() {
         tweetId: tweet.id,
         userId: tweet.author_id,
       })
-        .catch((error) => {
-          console.error('Pipeline error:', error);
+        .catch((error: any) => {
+          console.error('Pipeline error:', error.message || error);
         })
         .finally(() => {
           processingTweets.delete(tweet.id);
@@ -129,11 +160,11 @@ async function pollMentions() {
   }
 }
 
-// Poll on interval
-setInterval(pollMentions, POLL_INTERVAL_MS);
-
-// Initial poll on startup
-pollMentions();
+// Initialize then start polling
+initializeLastSeenId().then(() => {
+  console.log('🔄 Starting mention polling...');
+  setInterval(pollMentions, POLL_INTERVAL_MS);
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 Clonk bot server running on port ${PORT}`);

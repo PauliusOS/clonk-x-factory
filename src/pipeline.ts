@@ -36,8 +36,12 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
     await replyToTweet(input.tweetId, replyText);
 
     console.log(`\n✅ Pipeline completed successfully!\n`);
-  } catch (error) {
-    console.error('❌ Pipeline failed:', error);
+  } catch (error: any) {
+    // Log safely — never dump full axios errors (they contain auth headers)
+    const safeMessage = error.response
+      ? `${error.response.status} ${error.response.statusText || ''} - ${error.config?.url || 'unknown URL'}`
+      : error.message || 'Unknown error';
+    console.error(`❌ Pipeline failed: ${safeMessage}`);
 
     // Try to reply with error message
     try {
@@ -45,10 +49,13 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
         input.tweetId,
         `Sorry, I couldn't build that app right now. Please try again later! 🔧`
       );
-    } catch (replyError) {
-      console.error('Failed to send error reply:', replyError);
+    } catch (replyError: any) {
+      const safeReplyMsg = replyError.response
+        ? `${replyError.response.status} - ${replyError.config?.url || ''}`
+        : replyError.message || 'Unknown error';
+      console.error(`Failed to send error reply: ${safeReplyMsg}`);
     }
 
-    throw error;
+    throw new Error(safeMessage);
   }
 }
