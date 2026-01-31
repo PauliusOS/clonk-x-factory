@@ -77,12 +77,19 @@ async function pollMentions() {
 
       const user = users.find((u: { id: string }) => u.id === tweet.author_id);
       const username = user?.username || 'unknown';
+      const tweetLower = tweet.text.toLowerCase();
 
       console.log(`\n📝 Tweet from @${username}: ${tweet.text}`);
 
-      // Extract idea
+      // Only process tweets that contain "build" — ignore random mentions/spam
+      if (!tweetLower.includes('build')) {
+        console.log('No "build" keyword found, skipping');
+        continue;
+      }
+
+      // Extract idea (remove @mentions and the "build" keyword)
       const idea = tweet.text
-        .replace(/@clonkbot/gi, '')
+        .replace(/@\w+/g, '')
         .replace(/build/gi, '')
         .trim();
 
