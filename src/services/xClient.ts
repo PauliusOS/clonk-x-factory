@@ -2,6 +2,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 
 const X_API_BASE = 'https://api.x.com/2';
+const X_UPLOAD_BASE = 'https://upload.twitter.com/1.1';
 
 interface TweetResponse {
   data: {
@@ -10,12 +11,7 @@ interface TweetResponse {
   };
 }
 
-export async function replyToTweet(
-  tweetId: string,
-  replyText: string
-): Promise<void> {
-  console.log(`💬 Replying to tweet ${tweetId}...`);
-
+function getCredentials() {
   const accessToken = process.env.X_ACCESS_TOKEN;
   const accessTokenSecret = process.env.X_ACCESS_TOKEN_SECRET;
   const apiKey = process.env.X_API_KEY;
@@ -25,7 +21,12 @@ export async function replyToTweet(
     throw new Error('Missing X API credentials');
   }
 
-  // OAuth 1.0a signature generation
+  return { accessToken, accessTokenSecret, apiKey, apiSecret };
+}
+
+function generateOAuthHeader(method: string, url: string): string {
+  const { accessToken, accessTokenSecret, apiKey, apiSecret } = getCredentials();
+
   const oauth: Record<string, string> = {
     oauth_consumer_key: apiKey,
     oauth_token: accessToken,
@@ -35,43 +36,93 @@ export async function replyToTweet(
     oauth_version: '1.0',
   };
 
-  const method = 'POST';
-  const url = `${X_API_BASE}/tweets`;
-  const params = { ...oauth };
-
-  // Create signature base string
-  const paramString = Object.keys(params)
+  // Create signature base string (only OAuth params, no body params for JSON/multipart)
+  const paramString = Object.keys(oauth)
     .sort()
-    .map((key) => `${key}=${encodeURIComponent(params[key])}`)
+    .map((key) => `${key}=${encodeURIComponent(oauth[key])}`)
     .join('&');
 
   const signatureBase = `${method}&${encodeURIComponent(url)}&${encodeURIComponent(paramString)}`;
-
-  // Create signing key
   const signingKey = `${encodeURIComponent(apiSecret)}&${encodeURIComponent(accessTokenSecret)}`;
-
-  // Generate signature
   const signature = crypto.createHmac('sha1', signingKey).update(signatureBase).digest('base64');
 
   oauth['oauth_signature'] = signature;
 
-  // Create Authorization header
-  const authHeader =
+  return (
     'OAuth ' +
     Object.keys(oauth)
       .sort()
       .map((key) => `${key}="${encodeURIComponent(oauth[key])}"`)
-      .join(', ');
+      .join(', ')
+  );
+}
 
-  // Post tweet
+export async function uploadMedia(imageBuffer: Buffer): Promise<string> {
+  console.log(`📤 Uploading media to X (${imageBuffer.length} bytes)...`);
+
+  const url = `${X_UPLOAD_BASE}/media/upload.json`;
+  const authHeader = generateOAuthHeader('POST', url);
+
+  // Build multipart form data
+  const boundary = `----FormBoundary${crypto.randomBytes(16).toString('hex')}`;
+  const parts: Buffer[] = [];
+
+  // media_data field (base64-encoded image)
+  parts.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="media_data"\r\n\r\n` +
+    imageBuffer.toString('base64') +
+    `\r\n`
+  ));
+
+  // media_category field
+  parts.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="media_category"\r\n\r\n` +
+    `tweet_image\r\n`
+  ));
+
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  const body = Buffer.concat(parts);
+
+  const response = await axios.post(url, body, {
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': body.length.toString(),
+    },
+    maxBodyLength: Infinity,
+  });
+
+  const mediaId = response.data.media_id_string;
+  console.log(`✅ Media uploaded: ${mediaId}`);
+  return mediaId;
+}
+
+export async function replyToTweet(
+  tweetId: string,
+  replyText: string,
+  mediaIds?: string[]
+): Promise<void> {
+  console.log(`💬 Replying to tweet ${tweetId}...`);
+
+  const url = `${X_API_BASE}/tweets`;
+  const authHeader = generateOAuthHeader('POST', url);
+
+  const requestBody: Record<string, unknown> = {
+    text: replyText,
+    reply: {
+      in_reply_to_tweet_id: tweetId,
+    },
+  };
+
+  if (mediaIds && mediaIds.length > 0) {
+    requestBody.media = { media_ids: mediaIds };
+  }
+
   const response = await axios.post<TweetResponse>(
     url,
-    {
-      text: replyText,
-      reply: {
-        in_reply_to_tweet_id: tweetId,
-      },
-    },
+    requestBody,
     {
       headers: {
         Authorization: authHeader,
