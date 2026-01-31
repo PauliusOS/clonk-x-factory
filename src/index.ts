@@ -1,6 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import crypto from 'crypto';
+import axios from 'axios';
 import { processTweetToApp } from './pipeline';
 
 dotenv.config();
@@ -11,87 +11,120 @@ const PORT = process.env.PORT || 8080;
 app.use(express.json());
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// X Webhook CRC verification
-app.get('/webhooks/x', (req, res) => {
-  const crc_token = req.query.crc_token as string;
+// Store last seen tweet ID to avoid duplicates
+let lastSeenTweetId = '';
 
-  if (crc_token) {
-    const hash = crypto
-      .createHmac('sha256', process.env.X_API_SECRET || '')
-      .update(crc_token)
-      .digest('base64');
+// Set of tweet IDs currently being processed to prevent double-processing
+const processingTweets = new Set<string>();
 
-    res.status(200).json({
-      response_token: `sha256=${hash}`,
-    });
-  } else {
-    res.status(400).send('Missing crc_token');
-  }
-});
-
-// X Webhook event handler
-app.post('/webhooks/x', async (req, res) => {
-  console.log('\n📨 Webhook received');
-
-  // Respond immediately (X requires <10s response)
-  res.status(200).json({ status: 'received' });
-
+async function pollMentions() {
   try {
-    // Check if it's a tweet_create event
-    const events = req.body.tweet_create_events;
-    if (!events || events.length === 0) {
-      console.log('No tweet events found');
-      return;
-    }
-
-    const tweet = events[0];
-    const tweetText = tweet.text;
-    const tweetId = tweet.id_str;
-    const userId = tweet.user.id_str;
-    const username = tweet.user.screen_name;
-
-    // Ignore the bot's own tweets to prevent infinite loops
+    const bearerToken = process.env.X_BEARER_TOKEN;
     const botUserId = process.env.X_BOT_USER_ID;
-    if (botUserId && userId === botUserId) {
-      console.log('Ignoring own tweet');
+
+    if (!bearerToken || !botUserId) {
+      console.error('Missing X_BEARER_TOKEN or X_BOT_USER_ID');
       return;
     }
 
-    console.log(`📝 Tweet from @${username}: ${tweetText}`);
+    const params: Record<string, string> = {
+      max_results: '10',
+      'tweet.fields': 'author_id,created_at',
+      'user.fields': 'username',
+      expansions: 'author_id',
+    };
 
-    // Check if this is a mention of our bot
-    if (!tweetText.toLowerCase().includes('@clonkbot')) {
-      console.log('Not a mention of @clonkbot');
+    if (lastSeenTweetId) {
+      params.since_id = lastSeenTweetId;
+    }
+
+    const response = await axios.get(
+      `https://api.x.com/2/users/${botUserId}/mentions`,
+      {
+        headers: {
+          Authorization: `Bearer ${bearerToken}`,
+        },
+        params,
+      }
+    );
+
+    const tweets = response.data.data || [];
+    const users = response.data.includes?.users || [];
+
+    if (tweets.length === 0) {
       return;
     }
 
-    // Extract the app idea
-    const idea = tweetText
-      .replace(/@clonkbot/gi, '')
-      .replace(/build/gi, '')
-      .trim();
+    // Update last seen ID (first tweet is most recent)
+    lastSeenTweetId = tweets[0].id;
 
-    if (!idea || idea.length < 3) {
-      console.log('Idea too short, skipping');
-      return;
+    console.log(`\n📨 Found ${tweets.length} new mention(s)`);
+
+    for (const tweet of tweets) {
+      // Skip bot's own tweets
+      if (tweet.author_id === botUserId) {
+        continue;
+      }
+
+      // Skip already-processing tweets
+      if (processingTweets.has(tweet.id)) {
+        continue;
+      }
+
+      const user = users.find((u: { id: string }) => u.id === tweet.author_id);
+      const username = user?.username || 'unknown';
+
+      console.log(`\n📝 Tweet from @${username}: ${tweet.text}`);
+
+      // Extract idea
+      const idea = tweet.text
+        .replace(/@clonkbot/gi, '')
+        .replace(/build/gi, '')
+        .trim();
+
+      if (!idea || idea.length < 3) {
+        console.log('Idea too short, skipping');
+        continue;
+      }
+
+      console.log(`💡 App idea: ${idea}`);
+
+      // Mark as processing
+      processingTweets.add(tweet.id);
+
+      // Process in background
+      processTweetToApp({
+        idea,
+        tweetId: tweet.id,
+        userId: tweet.author_id,
+      })
+        .catch((error) => {
+          console.error('Pipeline error:', error);
+        })
+        .finally(() => {
+          processingTweets.delete(tweet.id);
+        });
     }
-
-    console.log(`💡 App idea: ${idea}`);
-
-    // Process in background (don't await)
-    processTweetToApp({ idea, tweetId, userId }).catch((error) => {
-      console.error('Pipeline error:', error);
-    });
-  } catch (error) {
-    console.error('❌ Error processing webhook:', error);
+  } catch (error: any) {
+    if (error.response?.status === 429) {
+      console.log('⏳ Rate limited, will retry next poll');
+    } else {
+      console.error('❌ Error polling mentions:', error.message || error);
+    }
   }
-});
+}
+
+// Poll every 30 seconds
+setInterval(pollMentions, 30000);
+
+// Initial poll on startup
+pollMentions();
 
 app.listen(PORT, () => {
   console.log(`🚀 Clonk bot server running on port ${PORT}`);
-  console.log(`📍 Webhook endpoint: /webhooks/x`);
+  console.log(`🔄 Polling for mentions every 30 seconds`);
 });
