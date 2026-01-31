@@ -21,10 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV HOME=/home/node
 
 # Install Claude Code CLI globally (required by @anthropic-ai/claude-agent-sdk)
 RUN npm install -g @anthropic-ai/claude-code
+
+# Create non-root user (Claude Code refuses --dangerously-skip-permissions as root)
+RUN useradd -m -s /bin/bash appuser
 
 WORKDIR /app
 
@@ -36,7 +38,10 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
-# Ensure entrypoint is executable
-RUN chmod +x /app/entrypoint.sh
+# Set ownership and make entrypoint executable
+RUN chown -R appuser:appuser /app && chmod +x /app/entrypoint.sh
+
+USER appuser
+ENV HOME=/home/appuser
 
 CMD ["/app/entrypoint.sh"]
