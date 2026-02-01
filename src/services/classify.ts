@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic();
 
-const CLASSIFICATION_MODEL = 'claude-haiku-4-5-20250929';
+const CLASSIFICATION_MODEL = 'claude-haiku-4-5-20251001';
 
 const SYSTEM_PROMPT = `You are a tweet intent classifier for a bot that builds web apps on request.
 
