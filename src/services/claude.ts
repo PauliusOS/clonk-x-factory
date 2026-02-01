@@ -28,11 +28,26 @@ interface RawGeneratedApp {
 const TEMPLATE_DIR = path.join(process.cwd(), 'templates', 'react-vite');
 const BUILD_DIR = '/tmp/app-build';
 
-// Load the frontend-design skill content at startup (embedded in system prompt to avoid SDK hook recursion)
-const SKILL_PATH = path.join(process.cwd(), '.claude', 'skills', 'frontend-design', 'SKILL.md');
-const SKILL_CONTENT = fs.existsSync(SKILL_PATH)
-  ? fs.readFileSync(SKILL_PATH, 'utf-8').replace(/^---[\s\S]*?---\n*/m, '') // strip frontmatter
-  : '';
+// Load all skills from .claude/skills/ at startup.
+// Embedded in system prompt as a workaround for SDK settingSources: ['project']
+// causing RangeError: Maximum call stack size exceeded (recursive hook execution).
+// Skills stay in .claude/skills/ as source of truth — re-enable settingSources once SDK is fixed.
+function loadSkills(): string {
+  const skillsDir = path.join(process.cwd(), '.claude', 'skills');
+  if (!fs.existsSync(skillsDir)) return '';
+
+  const parts: string[] = [];
+  for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
+    if (!fs.existsSync(skillFile)) continue;
+    const content = fs.readFileSync(skillFile, 'utf-8').replace(/^---[\s\S]*?---\n*/m, ''); // strip frontmatter
+    parts.push(content.trim());
+  }
+  return parts.join('\n\n');
+}
+
+const SKILLS_CONTENT = loadSkills();
 
 const SYSTEM_PROMPT = `You are an expert frontend developer. Generate ONLY the creative source files for a web application based on the user's request.
 
@@ -62,7 +77,7 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 
 ## Design Guidelines
 
-${SKILL_CONTENT}`;
+${SKILLS_CONTENT}`;
 
 const OUTPUT_SCHEMA = {
   type: 'object',
