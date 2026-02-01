@@ -31,11 +31,12 @@ CRITICAL rules for generated config files:
 - All generated code must have zero TypeScript errors — do not declare variables you don't use
 
 BUILD VERIFICATION — you MUST do this before returning your final answer:
-1. Write all project files to /tmp/app-build/
-2. Run: cd /tmp/app-build && npm install && npm run build
-3. If the build fails, read the error output, fix the code, and retry until it passes
-4. Only return your final structured output AFTER the build succeeds
+1. Write ALL project files to /tmp/app-build/ using a single Bash command (mkdir -p + cat with heredocs). Do NOT use the Write tool for each file individually — that wastes turns.
+2. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
+3. If the build fails, fix the errors and retry (max 2 retries). Use Bash to overwrite only the broken files and re-run the build.
+4. Only return your final structured output AFTER the build succeeds.
 5. Clean up: rm -rf /tmp/app-build
+Be efficient — minimize the number of tool calls. Combine file writes into single Bash commands.
 
 Important:
 - Make the app fully functional
@@ -143,7 +144,7 @@ export async function generateApp(
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       persistSession: false,
-      maxTurns: 15,
+      maxTurns: 30,
       systemPrompt: SYSTEM_PROMPT,
       outputFormat: {
         type: 'json_schema',
