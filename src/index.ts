@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import { processTweetToApp } from './pipeline';
+import { classifyTweet } from './services/classify';
 
 dotenv.config();
 
@@ -95,16 +96,18 @@ async function pollMentions() {
 
       console.log(`\n📝 Tweet from @${username}: ${tweet.text}`);
 
-      // Only process tweets that contain "build" — ignore random mentions/spam
-      if (!tweetLower.includes('build')) {
-        console.log('No "build" keyword found, skipping');
+      // Only process tweets that contain a trigger keyword — ignore random mentions/spam
+      const TRIGGER_KEYWORDS = ['build', 'make', 'create'];
+      const hasKeyword = TRIGGER_KEYWORDS.some(kw => tweetLower.includes(kw));
+      if (!hasKeyword) {
+        console.log('No trigger keyword (build/make/create) found, skipping');
         continue;
       }
 
-      // Extract idea (remove @mentions and the "build" keyword)
+      // Extract idea (remove @mentions and trigger keywords)
       const idea = tweet.text
         .replace(/@\w+/g, '')
-        .replace(/build/gi, '')
+        .replace(/\b(build|make|create)\b/gi, '')
         .trim();
 
       if (!idea || idea.length < 3) {
@@ -144,6 +147,14 @@ async function pollMentions() {
           console.log(`🔗 Parent tweet: ${parentTweet.text.substring(0, 80)}...${parentImageUrls.length ? ` (${parentImageUrls.length} image(s))` : ''}`);
         }
       }
+
+      // Use AI to classify whether this is a genuine build request
+      const isAppRequest = await classifyTweet(tweet.text, parentContext?.text);
+      if (!isAppRequest) {
+        console.log('🤖 AI classification: NOT a build request, skipping');
+        continue;
+      }
+      console.log('🤖 AI classification: confirmed build request, proceeding');
 
       console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}`);
 

@@ -53,7 +53,7 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
 
     // Step 4: Reply with links + optional screenshot
     console.log('\n4️⃣ Replying to tweet...');
-    const replyText = `✅ App live: ${vercelUrl}\n📝 Contribute: ${githubUrl}\n\nFork it, improve it, ship it together 🚀`;
+    const replyText = `✅ App live: ${vercelUrl}\n- Continue this in the @getkomand Mac app\n📝 Contribute: ${githubUrl}\n\nFork it, improve it, ship it together 🚀`;
 
     await replyToTweet(input.tweetId, replyText, mediaIds);
 
