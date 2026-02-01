@@ -28,6 +28,12 @@ interface RawGeneratedApp {
 const TEMPLATE_DIR = path.join(process.cwd(), 'templates', 'react-vite');
 const BUILD_DIR = '/tmp/app-build';
 
+// Load the frontend-design skill content at startup (embedded in system prompt to avoid SDK hook recursion)
+const SKILL_PATH = path.join(process.cwd(), '.claude', 'skills', 'frontend-design', 'SKILL.md');
+const SKILL_CONTENT = fs.existsSync(SKILL_PATH)
+  ? fs.readFileSync(SKILL_PATH, 'utf-8').replace(/^---[\s\S]*?---\n*/m, '') // strip frontmatter
+  : '';
+
 const SYSTEM_PROMPT = `You are an expert frontend developer. Generate ONLY the creative source files for a web application based on the user's request.
 
 Infrastructure files (package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx) are pre-staged at /tmp/app-build/ — do NOT recreate them.
@@ -52,7 +58,11 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 3. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
 4. If the build fails, fix the errors and retry (max 2 retries).
 5. Only return your final structured output AFTER the build succeeds.
-6. Clean up: rm -rf /tmp/app-build`;
+6. Clean up: rm -rf /tmp/app-build
+
+## Design Guidelines
+
+${SKILL_CONTENT}`;
 
 const OUTPUT_SCHEMA = {
   type: 'object',
@@ -200,7 +210,7 @@ export async function generateApp(
   const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
   promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
 
-  promptParts.push('Use /frontend-design to make it visually stunning and distinctive.');
+  promptParts.push('Follow the Design Guidelines in your system prompt to make it visually stunning and distinctive.');
 
   const textPrompt = promptParts.join('\n\n');
 
@@ -259,9 +269,8 @@ export async function generateApp(
       model: 'claude-opus-4-5-20251101',
       cwd: process.cwd(),
       env: process.env as Record<string, string>,
-      settingSources: ['project'],
-      tools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
-      allowedTools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
+      tools: ['Bash', 'Write', 'Read', 'Edit'],
+      allowedTools: ['Bash', 'Write', 'Read', 'Edit'],
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       persistSession: false,
