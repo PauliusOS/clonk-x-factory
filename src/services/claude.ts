@@ -28,10 +28,9 @@ interface RawGeneratedApp {
 const TEMPLATE_DIR = path.join(process.cwd(), 'templates', 'react-vite');
 const BUILD_DIR = '/tmp/app-build';
 
-// Load all skills from .claude/skills/ at startup.
-// Embedded in system prompt as a workaround for SDK settingSources: ['project']
-// causing RangeError: Maximum call stack size exceeded (recursive hook execution).
-// Skills stay in .claude/skills/ as source of truth — re-enable settingSources once SDK is fixed.
+// Load all skills from .claude/skills/ at startup and embed in system prompt.
+// This serves as both the primary delivery mechanism and a fallback if the SDK's
+// native Skill tool has issues. Skills stay in .claude/skills/ as source of truth.
 function loadSkills(): string {
   const skillsDir = path.join(process.cwd(), '.claude', 'skills');
   if (!fs.existsSync(skillsDir)) return '';
@@ -225,7 +224,7 @@ export async function generateApp(
   const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
   promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
 
-  promptParts.push('Follow the Design Guidelines in your system prompt to make it visually stunning and distinctive.');
+  promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');
 
   const textPrompt = promptParts.join('\n\n');
 
@@ -284,8 +283,9 @@ export async function generateApp(
       model: 'claude-opus-4-5-20251101',
       cwd: process.cwd(),
       env: process.env as Record<string, string>,
-      tools: ['Bash', 'Write', 'Read', 'Edit'],
-      allowedTools: ['Bash', 'Write', 'Read', 'Edit'],
+      settingSources: ['project'],
+      tools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
+      allowedTools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       persistSession: false,
