@@ -30,6 +30,13 @@ CRITICAL rules for generated config files:
 - package.json "build" script must be "tsc && vite build"
 - All generated code must have zero TypeScript errors — do not declare variables you don't use
 
+BUILD VERIFICATION — you MUST do this before returning your final answer:
+1. Write all project files to /tmp/app-build/
+2. Run: cd /tmp/app-build && npm install && npm run build
+3. If the build fails, read the error output, fix the code, and retry until it passes
+4. Only return your final structured output AFTER the build succeeds
+5. Clean up: rm -rf /tmp/app-build
+
 Important:
 - Make the app fully functional
 - All code must be valid and build successfully
@@ -131,12 +138,12 @@ export async function generateApp(
       cwd: process.cwd(),
       env: process.env as Record<string, string>,
       settingSources: ['project'],
-      tools: ['Skill'],
-      allowedTools: ['Skill'],
+      tools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
+      allowedTools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       persistSession: false,
-      maxTurns: 5,
+      maxTurns: 15,
       systemPrompt: SYSTEM_PROMPT,
       outputFormat: {
         type: 'json_schema',

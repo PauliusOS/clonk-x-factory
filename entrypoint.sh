@@ -9,7 +9,11 @@ cat > "$HOME/.claude/settings.json" << 'SETTINGS'
 {
   "permissions": {
     "allow": [
-      "Skill"
+      "Skill",
+      "Bash",
+      "Write",
+      "Read",
+      "Edit"
     ],
     "deny": []
   }
