@@ -3,6 +3,7 @@ import { deployToVercel, waitForDeployment } from './services/vercel';
 import { createGitHubRepo } from './services/github';
 import { replyToTweet, uploadMedia } from './services/xClient';
 import { takeScreenshot } from './services/screenshot';
+import { injectVibedBadge } from './services/badge';
 
 export interface PipelineInput {
   idea: string;
@@ -20,6 +21,9 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
     // Step 1: Generate app code with Claude
     console.log('1️⃣ Generating app code...');
     const generatedApp = await generateApp(input.idea, input.imageUrls, input.parentContext, input.username);
+
+    // Inject the "keep building on vibed.inc" badge into the app
+    injectVibedBadge(generatedApp.files);
 
     // Step 2: Deploy to Vercel
     console.log('\n2️⃣ Deploying to Vercel...');
