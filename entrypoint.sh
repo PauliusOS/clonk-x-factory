@@ -20,6 +20,9 @@ cat > "$HOME/.claude/settings.json" << 'SETTINGS'
 }
 SETTINGS
 
+# Create remote-settings.json to prevent SDK ENOENT errors
+echo '{}' > "$HOME/.claude/remote-settings.json"
+
 # Ensure project .claude/skills directory exists
 mkdir -p /app/.claude/skills
 

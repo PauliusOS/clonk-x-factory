@@ -47,12 +47,12 @@ Requirements:
 - Make it fully functional and polished
 
 BUILD VERIFICATION — you MUST do this before returning your final answer:
-1. Write your creative source files to /tmp/app-build/src/ using Bash (the template files are already there).
-2. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
-3. If the build fails, fix the errors and retry (max 2 retries).
-4. Only return your final structured output AFTER the build succeeds.
-5. Clean up: rm -rf /tmp/app-build
-Be efficient — combine file writes into single Bash commands using heredocs.`;
+1. Write your creative source files to /tmp/app-build/src/ using the Write tool (the template files are already there). Do NOT use Bash heredocs — JS code with brackets causes shell substitution errors.
+2. If you specified extraDependencies, install them: cd /tmp/app-build && npm install <pkg1> <pkg2> 2>&1
+3. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
+4. If the build fails, fix the errors and retry (max 2 retries).
+5. Only return your final structured output AFTER the build succeeds.
+6. Clean up: rm -rf /tmp/app-build`;
 
 const OUTPUT_SCHEMA = {
   type: 'object',
@@ -260,8 +260,8 @@ export async function generateApp(
       cwd: process.cwd(),
       env: process.env as Record<string, string>,
       settingSources: ['project'],
-      tools: ['Skill', 'Bash'],
-      allowedTools: ['Skill', 'Bash'],
+      tools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
+      allowedTools: ['Skill', 'Bash', 'Write', 'Read', 'Edit'],
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       persistSession: false,
