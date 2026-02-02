@@ -103,14 +103,16 @@ Requirements:
 - Full-stack app with real-time Convex backend
 - Include authentication (sign in/out buttons using WorkOS AuthKit)
 - Responsive design
-- All TypeScript must compile cleanly
+- All TypeScript in src/ must compile cleanly (convex/ files are NOT compiled by tsc — they are compiled separately by the Convex CLI)
 - Make it fully functional and polished
 
+CRITICAL: Do NOT explore, read, or list files in /tmp/app-build/. The template is already staged and you know exactly what's there. Do NOT read package.json, tsconfig.json, main.tsx, auth.ts, auth.config.ts, or any _generated/ files. Do NOT modify any template files. Just write your creative files and build.
+
 BUILD VERIFICATION — you MUST do this before returning your final answer:
-1. Write your files to /tmp/app-build/src/ and /tmp/app-build/convex/ using the Write tool. Do NOT use Bash heredocs.
+1. Write ALL your files to /tmp/app-build/src/ and /tmp/app-build/convex/ using the Write tool in a single turn if possible. Do NOT use Bash heredocs.
 2. If you specified extraDependencies, install them: cd /tmp/app-build && npm install <pkg1> <pkg2> 2>&1
 3. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
-4. If the build fails, fix the errors and retry (max 2 retries).
+4. The build only compiles src/ files (not convex/). If it fails, fix only src/ errors and retry (max 2 retries).
 5. Only return your final structured output AFTER the build succeeds.
 6. Do NOT clean up /tmp/app-build — the pipeline needs it to deploy Convex functions.
 
