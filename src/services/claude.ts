@@ -273,6 +273,8 @@ async function runClaudeQuery(
   let result: SDKResultSuccess | null = null;
   let lastError: string | null = null;
 
+  let turnCount = 0;
+
   for await (const message of query({
     prompt,
     options: {
@@ -292,17 +294,51 @@ async function runClaudeQuery(
         schema: OUTPUT_SCHEMA,
       },
       stderr: (data: string) => {
-        console.error(`[claude-code stderr] ${data}`);
+        // Filter out noisy "Bun is not defined" messages
+        if (!data.includes('Bun is not defined')) {
+          console.error(`[claude-code stderr] ${data}`);
+        }
       },
     },
   })) {
-    if (message.type === 'result') {
-      if (message.subtype === 'success') {
-        result = message as SDKResultSuccess;
+    const msg = message as any;
+
+    if (msg.type === 'assistant') {
+      turnCount++;
+      // Log assistant text (truncated)
+      const text = msg.message?.content
+        ?.filter((b: any) => b.type === 'text')
+        .map((b: any) => b.text)
+        .join('')
+        .slice(0, 200);
+      if (text) {
+        console.log(`  🤖 [turn ${turnCount}/${maxTurns}] ${text}${text.length >= 200 ? '...' : ''}`);
+      }
+
+      // Log tool use summaries
+      const tools = msg.message?.content?.filter((b: any) => b.type === 'tool_use') || [];
+      for (const tool of tools) {
+        const input = tool.input || {};
+        if (tool.name === 'Write') {
+          console.log(`  📝 [turn ${turnCount}] Write: ${input.file_path || 'unknown'}`);
+        } else if (tool.name === 'Bash') {
+          const cmd = (input.command || '').slice(0, 120);
+          console.log(`  💻 [turn ${turnCount}] Bash: ${cmd}`);
+        } else if (tool.name === 'Read') {
+          console.log(`  📖 [turn ${turnCount}] Read: ${input.file_path || 'unknown'}`);
+        } else if (tool.name === 'Skill') {
+          console.log(`  🎨 [turn ${turnCount}] Skill: ${input.skill || 'unknown'}`);
+        } else {
+          console.log(`  🔧 [turn ${turnCount}] ${tool.name}`);
+        }
+      }
+    } else if (msg.type === 'result') {
+      if (msg.subtype === 'success') {
+        result = msg as SDKResultSuccess;
+        console.log(`  ✅ [turn ${turnCount}] Generation complete`);
       } else {
-        const errMsg = message as any;
-        lastError = errMsg.errors?.join(', ') || errMsg.subtype || 'unknown';
-        console.error(`❌ Agent SDK result error: ${lastError}`);
+        lastError = msg.errors?.join(', ') || msg.subtype || 'unknown';
+        console.error(`  ❌ [turn ${turnCount}] Agent SDK error: ${lastError}`);
       }
     }
   }
@@ -423,7 +459,7 @@ export async function generateConvexApp(
   console.log('📋 Staging Convex template files to /tmp/app-build/...');
   stageTemplateToBuildDir('convex-react-vite', convexDeploymentUrl);
 
-  const rawApp = await runClaudeQuery(prompt, CONVEX_SYSTEM_PROMPT, 35);
+  const rawApp = await runClaudeQuery(prompt, CONVEX_SYSTEM_PROMPT, 15);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'convex-react-vite', convexDeploymentUrl);
