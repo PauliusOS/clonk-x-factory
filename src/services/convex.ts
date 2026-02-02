@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { exportJWK, exportPKCS8, generateKeyPair } from 'jose';
 
 const CONVEX_API = 'https://api.convex.dev/v1';
@@ -92,12 +92,15 @@ export async function configureConvexAuthKeys(buildDir: string, deployKey: strin
  * Set an environment variable on a Convex deployment via CLI.
  */
 function setConvexEnvVar(buildDir: string, deployKey: string, name: string, value: string): void {
-  execSync(`npx convex env set ${name} '${value.replace(/'/g, "'\\''")}'`, {
+  const result = spawnSync('npx', ['convex', 'env', 'set', name, value], {
     cwd: buildDir,
     env: { ...process.env, CONVEX_DEPLOY_KEY: deployKey },
     stdio: 'pipe',
     timeout: 30_000,
   });
+  if (result.status !== 0) {
+    throw new Error(`Failed to set env var ${name}: ${result.stderr?.toString() || result.stdout?.toString()}`);
+  }
 }
 
 /**
