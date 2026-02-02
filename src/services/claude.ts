@@ -88,7 +88,7 @@ Infrastructure files are pre-staged at ${buildDir}/ — do NOT recreate them. Sp
 - package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx
 - convex/auth.ts, convex/auth.config.ts, convex/tsconfig.json
 
-The stack is React 18 + TypeScript + Vite + Tailwind CSS (via CDN) + Convex (real-time backend) + WorkOS AuthKit (authentication).
+The stack is React 18 + TypeScript + Vite + Tailwind CSS (via CDN) + Convex (real-time backend) + Convex Auth (password + anonymous authentication).
 
 You generate TWO categories of files:
 
@@ -111,7 +111,7 @@ If you need npm packages beyond what's in the template (e.g. framer-motion, luci
 
 Requirements:
 - Full-stack app with real-time Convex backend
-- Include authentication (sign in/out buttons using WorkOS AuthKit)
+- Include authentication (email/password sign-in/sign-up using Convex Auth)
 - Responsive design
 - All TypeScript in src/ must compile cleanly (convex/ files are NOT compiled by tsc — they are compiled separately by the Convex CLI)
 - Make it fully functional and polished
@@ -463,7 +463,7 @@ export async function generateConvexApp(
     promptParts.push(`The user replied to the following tweet with their build request. Use this original post as the primary context for what to build:\n\n"${parentContext.text}"`);
   }
   promptParts.push(`Build a full-stack web app with a Convex backend for: "${idea}"`);
-  promptParts.push(`The app should have real-time data, authentication (WorkOS AuthKit sign-in/sign-out), and a polished UI.`);
+  promptParts.push(`The app should have real-time data, authentication (email/password sign-in/sign-up), and a polished UI.`);
   const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
   promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
   promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');

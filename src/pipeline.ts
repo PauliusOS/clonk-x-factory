@@ -4,7 +4,7 @@ import { createGitHubRepo } from './services/github';
 import { replyToTweet, uploadMedia } from './services/xClient';
 import { takeScreenshot } from './services/screenshot';
 import { injectVibedBadge } from './services/badge';
-import { createConvexProject, configureConvexAuthEnvVars, deployConvexBackend } from './services/convex';
+import { createConvexProject, deployConvexBackend } from './services/convex';
 
 export interface PipelineInput {
   idea: string;
@@ -36,10 +36,8 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
         input.username,
       );
 
-      // Now that the build dir has convex in package.json, configure WorkOS env vars
       const buildDir = generatedApp.buildDir!;
-      console.log('\n3️⃣ Configuring Convex auth + deploying backend...');
-      configureConvexAuthEnvVars(buildDir, convex.deployKey);
+      console.log('\n3️⃣ Deploying Convex backend...');
       await deployConvexBackend(buildDir, convex.deployKey);
     } else {
       // Standard flow: generate static React app

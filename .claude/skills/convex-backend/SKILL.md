@@ -1,17 +1,17 @@
 ---
 name: convex-backend
-description: Guidelines for generating full-stack Convex applications with real-time database, server functions, and WorkOS AuthKit authentication.
+description: Guidelines for generating full-stack Convex applications with real-time database, server functions, and Convex Auth (password + anonymous) authentication.
 ---
 
-This skill guides creation of full-stack Convex applications with a real-time backend. The app uses Convex for the database, server functions (queries/mutations/actions), and WorkOS AuthKit for authentication.
+This skill guides creation of full-stack Convex applications with a real-time backend. The app uses Convex for the database, server functions (queries/mutations/actions), and Convex Auth for authentication (email/password + anonymous).
 
 ## Architecture
 
 The app is a React + Vite frontend connected to a Convex backend. Key infrastructure files are pre-staged:
 
 - `src/main.tsx` — already wraps `<App />` in `<ConvexAuthProvider>`
-- `convex/auth.ts` — already configures `convexAuth({})`
-- `convex/auth.config.ts` — already configures WorkOS provider
+- `convex/auth.ts` — already configures `convexAuth()` with Password + Anonymous providers
+- `convex/auth.config.ts` — already configured (do not modify)
 
 You generate:
 - `convex/schema.ts` — the database schema (REQUIRED)
@@ -188,23 +188,59 @@ const runSummary = useAction(api.tasks.generateSummary);
 
 ### Authentication
 
+The template uses Convex Auth with Password and Anonymous providers. No external OAuth setup is needed.
+
 ```typescript
 import { useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useState } from "react";
 
-function AuthButton() {
+function SignIn() {
+  const { signIn } = useAuthActions();
+  const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        void signIn("password", formData);
+      }}
+    >
+      <input name="email" placeholder="Email" type="email" />
+      <input name="password" placeholder="Password" type="password" />
+      <input name="flow" type="hidden" value={flow} />
+      <button type="submit">{flow === "signIn" ? "Sign In" : "Sign Up"}</button>
+      <button type="button" onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}>
+        {flow === "signIn" ? "Sign up instead" : "Sign in instead"}
+      </button>
+    </form>
+  );
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signIn, signOut } = useAuthActions();
 
   if (isLoading) return <div>Loading...</div>;
-  if (isAuthenticated) {
-    return <button onClick={() => signOut()}>Sign Out</button>;
+  if (!isAuthenticated) {
+    return (
+      <div>
+        <SignIn />
+        <button onClick={() => signIn("anonymous")}>Continue as Guest</button>
+      </div>
+    );
   }
-  return <button onClick={() => signIn("workos")}>Sign In</button>;
+  return (
+    <div>
+      <button onClick={() => signOut()}>Sign Out</button>
+      {children}
+    </div>
+  );
 }
 ```
 
-Always check `isAuthenticated` before showing protected content. Show a sign-in button for unauthenticated users.
+Always check `isAuthenticated` before showing protected content. Use `signIn("password", formData)` for email/password auth and `signIn("anonymous")` for guest access.
 
 ## Important Rules
 
