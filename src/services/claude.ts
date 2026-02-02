@@ -268,6 +268,7 @@ function mergeWithTemplate(raw: RawGeneratedApp, template: TemplateName, convexU
 async function runClaudeQuery(
   prompt: string | AsyncIterable<any>,
   systemPrompt: string,
+  maxTurns: number = 20,
 ): Promise<RawGeneratedApp> {
   let result: SDKResultSuccess | null = null;
   let lastError: string | null = null;
@@ -284,7 +285,7 @@ async function runClaudeQuery(
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       persistSession: false,
-      maxTurns: 20,
+      maxTurns,
       systemPrompt,
       outputFormat: {
         type: 'json_schema',
@@ -422,7 +423,7 @@ export async function generateConvexApp(
   console.log('📋 Staging Convex template files to /tmp/app-build/...');
   stageTemplateToBuildDir('convex-react-vite', convexDeploymentUrl);
 
-  const rawApp = await runClaudeQuery(prompt, CONVEX_SYSTEM_PROMPT);
+  const rawApp = await runClaudeQuery(prompt, CONVEX_SYSTEM_PROMPT, 35);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'convex-react-vite', convexDeploymentUrl);
