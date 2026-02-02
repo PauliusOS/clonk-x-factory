@@ -38,7 +38,7 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
 
       const buildDir = generatedApp.buildDir!;
       console.log('\n3️⃣ Configuring auth + deploying Convex backend...');
-      await configureConvexAuthKeys(buildDir, convex.deployKey);
+      await configureConvexAuthKeys(convex.deploymentUrl, convex.deployKey);
       await deployConvexBackend(buildDir, convex.deployKey);
     } else {
       // Standard flow: generate static React app

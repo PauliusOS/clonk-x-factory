@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { exportJWK, exportPKCS8, generateKeyPair } from 'jose';
 
 const CONVEX_API = 'https://api.convex.dev/v1';
@@ -71,8 +71,9 @@ export async function createConvexProject(appName: string): Promise<ConvexProjec
 /**
  * Generate an RSA256 key pair and set JWT_PRIVATE_KEY + JWKS env vars
  * on the Convex deployment. Required by @convex-dev/auth for session tokens.
+ * Uses the Convex Deployment HTTP API (no CLI/shell needed).
  */
-export async function configureConvexAuthKeys(buildDir: string, deployKey: string): Promise<void> {
+export async function configureConvexAuthKeys(deploymentUrl: string, deployKey: string): Promise<void> {
   console.log(`🔐 Generating JWT keys for Convex Auth...`);
 
   const keys = await generateKeyPair('RS256', { extractable: true });
@@ -83,24 +84,26 @@ export async function configureConvexAuthKeys(buildDir: string, deployKey: strin
   // Private key: collapse newlines to spaces (Convex env vars are single-line)
   const privateKeyOneLine = privateKey.trimEnd().replace(/\n/g, ' ');
 
-  setConvexEnvVar(buildDir, deployKey, 'JWT_PRIVATE_KEY', privateKeyOneLine);
-  setConvexEnvVar(buildDir, deployKey, 'JWKS', jwks);
-  console.log(`✅ JWT keys configured`);
-}
-
-/**
- * Set an environment variable on a Convex deployment via CLI.
- */
-function setConvexEnvVar(buildDir: string, deployKey: string, name: string, value: string): void {
-  const result = spawnSync('npx', ['convex', 'env', 'set', name, value], {
-    cwd: buildDir,
-    env: { ...process.env, CONVEX_DEPLOY_KEY: deployKey },
-    stdio: 'pipe',
-    timeout: 30_000,
+  const res = await fetch(`${deploymentUrl}/api/v1/update_environment_variables`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Convex ${deployKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      changes: [
+        { name: 'JWT_PRIVATE_KEY', value: privateKeyOneLine },
+        { name: 'JWKS', value: jwks },
+      ],
+    }),
   });
-  if (result.status !== 0) {
-    throw new Error(`Failed to set env var ${name}: ${result.stderr?.toString() || result.stdout?.toString()}`);
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to set JWT env vars: ${res.status} ${body}`);
   }
+
+  console.log(`✅ JWT keys configured`);
 }
 
 /**
