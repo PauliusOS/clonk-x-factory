@@ -1,4 +1,5 @@
 import { execSync } from 'child_process';
+import { exportJWK, exportPKCS8, generateKeyPair } from 'jose';
 
 const CONVEX_API = 'https://api.convex.dev/v1';
 const CONVEX_TEAM_ID = process.env.CONVEX_TEAM_ID;
@@ -65,6 +66,38 @@ export async function createConvexProject(appName: string): Promise<ConvexProjec
   console.log(`✅ Deploy key created`);
 
   return { projectId, deploymentName, deploymentUrl, deployKey };
+}
+
+/**
+ * Generate an RSA256 key pair and set JWT_PRIVATE_KEY + JWKS env vars
+ * on the Convex deployment. Required by @convex-dev/auth for session tokens.
+ */
+export async function configureConvexAuthKeys(buildDir: string, deployKey: string): Promise<void> {
+  console.log(`🔐 Generating JWT keys for Convex Auth...`);
+
+  const keys = await generateKeyPair('RS256', { extractable: true });
+  const privateKey = await exportPKCS8(keys.privateKey);
+  const publicKey = await exportJWK(keys.publicKey);
+  const jwks = JSON.stringify({ keys: [{ use: 'sig', ...publicKey }] });
+
+  // Private key: collapse newlines to spaces (Convex env vars are single-line)
+  const privateKeyOneLine = privateKey.trimEnd().replace(/\n/g, ' ');
+
+  setConvexEnvVar(buildDir, deployKey, 'JWT_PRIVATE_KEY', privateKeyOneLine);
+  setConvexEnvVar(buildDir, deployKey, 'JWKS', jwks);
+  console.log(`✅ JWT keys configured`);
+}
+
+/**
+ * Set an environment variable on a Convex deployment via CLI.
+ */
+function setConvexEnvVar(buildDir: string, deployKey: string, name: string, value: string): void {
+  execSync(`npx convex env set ${name} '${value.replace(/'/g, "'\\''")}'`, {
+    cwd: buildDir,
+    env: { ...process.env, CONVEX_DEPLOY_KEY: deployKey },
+    stdio: 'pipe',
+    timeout: 30_000,
+  });
 }
 
 /**

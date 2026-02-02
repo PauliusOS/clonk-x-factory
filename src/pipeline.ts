@@ -4,7 +4,7 @@ import { createGitHubRepo } from './services/github';
 import { replyToTweet, uploadMedia } from './services/xClient';
 import { takeScreenshot } from './services/screenshot';
 import { injectVibedBadge } from './services/badge';
-import { createConvexProject, deployConvexBackend } from './services/convex';
+import { createConvexProject, configureConvexAuthKeys, deployConvexBackend } from './services/convex';
 
 export interface PipelineInput {
   idea: string;
@@ -37,7 +37,8 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
       );
 
       const buildDir = generatedApp.buildDir!;
-      console.log('\n3️⃣ Deploying Convex backend...');
+      console.log('\n3️⃣ Configuring auth + deploying Convex backend...');
+      await configureConvexAuthKeys(buildDir, convex.deployKey);
       await deployConvexBackend(buildDir, convex.deployKey);
     } else {
       // Standard flow: generate static React app

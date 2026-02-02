@@ -12,6 +12,7 @@ The app is a React + Vite frontend connected to a Convex backend. Key infrastruc
 - `src/main.tsx` — already wraps `<App />` in `<ConvexAuthProvider>`
 - `convex/auth.ts` — already configures `convexAuth()` with Password + Anonymous providers
 - `convex/auth.config.ts` — already configured (do not modify)
+- `convex/http.ts` — already configures auth HTTP routes (do not modify)
 
 You generate:
 - `convex/schema.ts` — the database schema (REQUIRED)
@@ -251,7 +252,7 @@ Always check `isAuthenticated` before showing protected content. Use `signIn("pa
 5. **Mutations are optimistic** — UI updates before server confirms
 6. **Never import server code in client** — use `api` from `_generated/api` for type-safe references
 7. **File paths**: server functions go in `convex/*.ts`, React components go in `src/`
-8. **Do NOT create `convex/auth.ts` or `convex/auth.config.ts`** — these are pre-staged in the template
+8. **Do NOT create `convex/auth.ts`, `convex/auth.config.ts`, or `convex/http.ts`** — these are pre-staged in the template
 9. **Do NOT create `src/main.tsx`** — this is pre-staged with ConvexAuthProvider
 10. **Do NOT use `convex/convex.config.ts`** — not needed unless using components
 11. **Do NOT create or modify files in `convex/_generated/`** — stub files are pre-staged so tsc passes. Real generated files are created by `npx convex deploy` later.

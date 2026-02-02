@@ -86,7 +86,7 @@ function makeConvexSystemPrompt(buildDir: string): string {
 
 Infrastructure files are pre-staged at ${buildDir}/ — do NOT recreate them. Specifically do NOT create:
 - package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx
-- convex/auth.ts, convex/auth.config.ts, convex/tsconfig.json
+- convex/auth.ts, convex/auth.config.ts, convex/http.ts, convex/tsconfig.json
 
 The stack is React 18 + TypeScript + Vite + Tailwind CSS (via CDN) + Convex (real-time backend) + Convex Auth (password + anonymous authentication).
 
@@ -116,7 +116,7 @@ Requirements:
 - All TypeScript in src/ must compile cleanly (convex/ files are NOT compiled by tsc — they are compiled separately by the Convex CLI)
 - Make it fully functional and polished
 
-CRITICAL: Do NOT explore, read, or list files in ${buildDir}/. The template is already staged and you know exactly what's there. Do NOT read package.json, tsconfig.json, main.tsx, auth.ts, auth.config.ts, or any _generated/ files. Do NOT modify any template files. Just write your creative files and build.
+CRITICAL: Do NOT explore, read, or list files in ${buildDir}/. The template is already staged and you know exactly what's there. Do NOT read package.json, tsconfig.json, main.tsx, auth.ts, auth.config.ts, http.ts, or any _generated/ files. Do NOT modify any template files. Just write your creative files and build.
 
 BUILD VERIFICATION — you MUST do this before returning your final answer:
 1. Write ALL your files to ${buildDir}/src/ and ${buildDir}/convex/ using the Write tool in a single turn if possible. Do NOT use Bash heredocs.
