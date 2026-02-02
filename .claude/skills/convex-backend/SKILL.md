@@ -218,14 +218,15 @@ Always check `isAuthenticated` before showing protected content. Show a sign-in 
 8. **Do NOT create `convex/auth.ts` or `convex/auth.config.ts`** — these are pre-staged in the template
 9. **Do NOT create `src/main.tsx`** — this is pre-staged with ConvexAuthProvider
 10. **Do NOT use `convex/convex.config.ts`** — not needed unless using components
+11. **Do NOT create or modify files in `convex/_generated/`** — stub files are pre-staged so tsc passes. Real generated files are created by `npx convex deploy` later.
 
 ## Build Verification
 
-The build verification for Convex apps has an extra step:
+The build verification for Convex apps:
 1. Write files to `/tmp/app-build/src/` and `/tmp/app-build/convex/` using the Write tool
 2. Run: `cd /tmp/app-build && npm install 2>&1`
 3. Run: `cd /tmp/app-build && npm run build 2>&1`
 4. If build fails, fix errors and retry (max 2 retries)
-5. Clean up: `rm -rf /tmp/app-build`
+5. Do NOT clean up `/tmp/app-build` — the pipeline needs it to deploy Convex functions
 
-Note: `npx convex typecheck` requires a deployment connection and may not work in the build dir. Focus on TypeScript compilation passing.
+Note: `convex/_generated/` contains stub files so tsc passes. The real generated types are created when the pipeline runs `npx convex deploy` after you finish. Do NOT try to run `npx convex dev` or `npx convex codegen`.
