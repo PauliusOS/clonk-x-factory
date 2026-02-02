@@ -1,5 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKResultSuccess } from '@anthropic-ai/claude-agent-sdk';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -10,6 +11,7 @@ export interface GeneratedApp {
   }[];
   appName: string;
   description: string;
+  buildDir?: string; // Unique build dir path (needed for Convex deploy step)
 }
 
 // Raw output from Claude — only creative files + metadata
@@ -28,7 +30,12 @@ interface RawGeneratedApp {
 export type TemplateName = 'react-vite' | 'convex-react-vite';
 
 const TEMPLATES_ROOT = path.join(process.cwd(), 'templates');
-const BUILD_DIR = '/tmp/app-build';
+
+/** Generate a unique build directory path to prevent concurrent pipeline collisions. */
+function createBuildDir(): string {
+  const id = crypto.randomBytes(4).toString('hex');
+  return `/tmp/app-build-${id}`;
+}
 
 // Load all skills from .claude/skills/ at startup and embed in system prompt.
 // This serves as both the primary delivery mechanism and a fallback if the SDK's
@@ -42,9 +49,10 @@ function loadSkill(skillName: string): string {
 const FRONTEND_SKILL = loadSkill('frontend-design');
 const CONVEX_SKILL = loadSkill('convex-backend');
 
-const SYSTEM_PROMPT = `You are an expert frontend developer. Generate ONLY the creative source files for a web application based on the user's request.
+function makeSystemPrompt(buildDir: string): string {
+  return `You are an expert frontend developer. Generate ONLY the creative source files for a web application based on the user's request.
 
-Infrastructure files (package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx) are pre-staged at /tmp/app-build/ — do NOT recreate them.
+Infrastructure files (package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx) are pre-staged at ${buildDir}/ — do NOT recreate them.
 
 The stack is React 18 + TypeScript + Vite + Tailwind CSS (via CDN). You control the visual identity through:
 - Font choices (specify Google Font stylesheet URLs in the "fonts" array)
@@ -52,7 +60,7 @@ The stack is React 18 + TypeScript + Vite + Tailwind CSS (via CDN). You control 
 - src/components/* — any additional components you need
 - Any .css files if needed beyond Tailwind
 
-If you need npm packages beyond react/react-dom (e.g. framer-motion, three, recharts, lucide-react), list them in "extraDependencies" as { "package-name": "^version" }. You MUST also install them into /tmp/app-build/ before building (e.g. cd /tmp/app-build && npm install framer-motion).
+If you need npm packages beyond react/react-dom (e.g. framer-motion, three, recharts, lucide-react), list them in "extraDependencies" as { "package-name": "^version" }. You MUST also install them into ${buildDir}/ before building (e.g. cd ${buildDir} && npm install framer-motion).
 
 Requirements:
 - Client-side only SPA, no backend/API calls, no external paid services
@@ -61,20 +69,22 @@ Requirements:
 - Make it fully functional and polished
 
 BUILD VERIFICATION — you MUST do this before returning your final answer:
-1. Write your creative source files to /tmp/app-build/src/ using the Write tool (the template files are already there). Do NOT use Bash heredocs — JS code with brackets causes shell substitution errors.
-2. If you specified extraDependencies, install them: cd /tmp/app-build && npm install <pkg1> <pkg2> 2>&1
-3. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
+1. Write your creative source files to ${buildDir}/src/ using the Write tool (the template files are already there). Do NOT use Bash heredocs — JS code with brackets causes shell substitution errors.
+2. If you specified extraDependencies, install them: cd ${buildDir} && npm install <pkg1> <pkg2> 2>&1
+3. Run: cd ${buildDir} && npm install 2>&1 && npm run build 2>&1
 4. If the build fails, fix the errors and retry (max 2 retries).
 5. Only return your final structured output AFTER the build succeeds.
-6. Clean up: rm -rf /tmp/app-build
+6. Clean up: rm -rf ${buildDir}
 
 ## Design Guidelines
 
 ${FRONTEND_SKILL}`;
+}
 
-const CONVEX_SYSTEM_PROMPT = `You are an expert full-stack developer. Generate the creative source files AND Convex backend functions for a web application based on the user's request.
+function makeConvexSystemPrompt(buildDir: string): string {
+  return `You are an expert full-stack developer. Generate the creative source files AND Convex backend functions for a web application based on the user's request.
 
-Infrastructure files are pre-staged at /tmp/app-build/ — do NOT recreate them. Specifically do NOT create:
+Infrastructure files are pre-staged at ${buildDir}/ — do NOT recreate them. Specifically do NOT create:
 - package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx
 - convex/auth.ts, convex/auth.config.ts, convex/tsconfig.json
 
@@ -97,7 +107,7 @@ The ConvexAuthProvider is already set up in src/main.tsx. Use these imports in y
 - \`import { useAuthActions } from "@convex-dev/auth/react"\`
 - \`import { api } from "../convex/_generated/api"\`
 
-If you need npm packages beyond what's in the template (e.g. framer-motion, lucide-react), list them in "extraDependencies" and install them: cd /tmp/app-build && npm install <pkg>.
+If you need npm packages beyond what's in the template (e.g. framer-motion, lucide-react), list them in "extraDependencies" and install them: cd ${buildDir} && npm install <pkg>.
 
 Requirements:
 - Full-stack app with real-time Convex backend
@@ -106,15 +116,15 @@ Requirements:
 - All TypeScript in src/ must compile cleanly (convex/ files are NOT compiled by tsc — they are compiled separately by the Convex CLI)
 - Make it fully functional and polished
 
-CRITICAL: Do NOT explore, read, or list files in /tmp/app-build/. The template is already staged and you know exactly what's there. Do NOT read package.json, tsconfig.json, main.tsx, auth.ts, auth.config.ts, or any _generated/ files. Do NOT modify any template files. Just write your creative files and build.
+CRITICAL: Do NOT explore, read, or list files in ${buildDir}/. The template is already staged and you know exactly what's there. Do NOT read package.json, tsconfig.json, main.tsx, auth.ts, auth.config.ts, or any _generated/ files. Do NOT modify any template files. Just write your creative files and build.
 
 BUILD VERIFICATION — you MUST do this before returning your final answer:
-1. Write ALL your files to /tmp/app-build/src/ and /tmp/app-build/convex/ using the Write tool in a single turn if possible. Do NOT use Bash heredocs.
-2. If you specified extraDependencies, install them: cd /tmp/app-build && npm install <pkg1> <pkg2> 2>&1
-3. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
+1. Write ALL your files to ${buildDir}/src/ and ${buildDir}/convex/ using the Write tool in a single turn if possible. Do NOT use Bash heredocs.
+2. If you specified extraDependencies, install them: cd ${buildDir} && npm install <pkg1> <pkg2> 2>&1
+3. Run: cd ${buildDir} && npm install 2>&1 && npm run build 2>&1
 4. The build only compiles src/ files (not convex/). If it fails, fix only src/ errors and retry (max 2 retries).
 5. Only return your final structured output AFTER the build succeeds.
-6. Do NOT clean up /tmp/app-build — the pipeline needs it to deploy Convex functions.
+6. Do NOT clean up ${buildDir} — the pipeline needs it to deploy Convex functions.
 
 ## Convex Backend Guidelines
 
@@ -123,6 +133,7 @@ ${CONVEX_SKILL}
 ## Design Guidelines
 
 ${FRONTEND_SKILL}`;
+}
 
 const OUTPUT_SCHEMA = {
   type: 'object',
@@ -185,13 +196,13 @@ function readTemplateFiles(template: TemplateName): { path: string; content: str
 }
 
 /**
- * Pre-stage template files to /tmp/app-build/ so Claude only needs to write creative files.
+ * Pre-stage template files to a unique build dir so Claude only needs to write creative files.
  * index.html is staged without fonts (fonts don't affect build, they're runtime-only).
  * For Convex templates, also writes .env.local with VITE_CONVEX_URL.
  */
-function stageTemplateToBuildDir(template: TemplateName, convexUrl?: string): void {
-  // Clean up any previous build
-  fs.rmSync(BUILD_DIR, { recursive: true, force: true });
+function stageTemplateToBuildDir(template: TemplateName, buildDir: string, convexUrl?: string): void {
+  // Clean up if this specific dir exists (shouldn't with unique IDs, but just in case)
+  fs.rmSync(buildDir, { recursive: true, force: true });
 
   const templateFiles = readTemplateFiles(template);
   for (const file of templateFiles) {
@@ -200,10 +211,10 @@ function stageTemplateToBuildDir(template: TemplateName, convexUrl?: string): vo
 
     if (file.path === 'index.html.template') {
       // Stage as index.html with placeholder fonts stripped (build doesn't need them)
-      targetPath = path.join(BUILD_DIR, 'index.html');
+      targetPath = path.join(buildDir, 'index.html');
       content = content.replace('{{TITLE}}', 'App').replace('{{FONTS}}', '');
     } else {
-      targetPath = path.join(BUILD_DIR, file.path);
+      targetPath = path.join(buildDir, file.path);
     }
 
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
@@ -212,7 +223,7 @@ function stageTemplateToBuildDir(template: TemplateName, convexUrl?: string): vo
 
   // For Convex templates, write .env.local so the frontend build can resolve VITE_CONVEX_URL
   if (template === 'convex-react-vite' && convexUrl) {
-    fs.writeFileSync(path.join(BUILD_DIR, '.env.local'), `VITE_CONVEX_URL=${convexUrl}\n`);
+    fs.writeFileSync(path.join(buildDir, '.env.local'), `VITE_CONVEX_URL=${convexUrl}\n`);
   }
 }
 
@@ -421,10 +432,11 @@ export async function generateApp(
 
   const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
 
-  console.log('📋 Staging template files to /tmp/app-build/...');
-  stageTemplateToBuildDir('react-vite');
+  const buildDir = createBuildDir();
+  console.log(`📋 Staging template files to ${buildDir}/...`);
+  stageTemplateToBuildDir('react-vite', buildDir);
 
-  const rawApp = await runClaudeQuery(prompt, SYSTEM_PROMPT);
+  const rawApp = await runClaudeQuery(prompt, makeSystemPrompt(buildDir));
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'react-vite');
@@ -458,13 +470,15 @@ export async function generateConvexApp(
 
   const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
 
-  console.log('📋 Staging Convex template files to /tmp/app-build/...');
-  stageTemplateToBuildDir('convex-react-vite', convexDeploymentUrl);
+  const buildDir = createBuildDir();
+  console.log(`📋 Staging Convex template files to ${buildDir}/...`);
+  stageTemplateToBuildDir('convex-react-vite', buildDir, convexDeploymentUrl);
 
-  const rawApp = await runClaudeQuery(prompt, CONVEX_SYSTEM_PROMPT, 15);
+  const rawApp = await runClaudeQuery(prompt, makeConvexSystemPrompt(buildDir), 15);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'convex-react-vite', convexDeploymentUrl);
+  mergedApp.buildDir = buildDir;
   console.log(`📦 Merged to ${mergedApp.files.length} total files (template + creative)`);
 
   return mergedApp;

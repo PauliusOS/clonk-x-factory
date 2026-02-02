@@ -36,10 +36,11 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
         input.username,
       );
 
-      // Now that /tmp/app-build has convex in package.json, configure WorkOS env vars
+      // Now that the build dir has convex in package.json, configure WorkOS env vars
+      const buildDir = generatedApp.buildDir!;
       console.log('\n3️⃣ Configuring Convex auth + deploying backend...');
-      configureConvexAuthEnvVars('/tmp/app-build', convex.deployKey);
-      await deployConvexBackend('/tmp/app-build', convex.deployKey);
+      configureConvexAuthEnvVars(buildDir, convex.deployKey);
+      await deployConvexBackend(buildDir, convex.deployKey);
     } else {
       // Standard flow: generate static React app
       console.log('1️⃣ Generating app code...');
