@@ -66,24 +66,33 @@ export async function createConvexProject(appName: string): Promise<ConvexProjec
   const { deployKey } = keyData;
   console.log(`✅ Deploy key created`);
 
-  // 3. Set WorkOS environment variables on the deployment (for AuthKit)
-  if (WORKOS_CLIENT_ID && WORKOS_API_KEY) {
-    console.log(`🔐 Configuring WorkOS AuthKit env vars...`);
-    setConvexEnvVar(deployKey, 'AUTH_WORKOS_CLIENT_ID', WORKOS_CLIENT_ID);
-    setConvexEnvVar(deployKey, 'AUTH_WORKOS_API_KEY', WORKOS_API_KEY);
-    console.log(`✅ WorkOS env vars configured`);
-  } else {
-    console.warn(`⚠️ WORKOS_CLIENT_ID or WORKOS_API_KEY not set — AuthKit will not work`);
-  }
-
   return { projectId, deploymentName, deploymentUrl, deployKey };
 }
 
 /**
- * Set an environment variable on a Convex deployment via CLI.
+ * Set WorkOS environment variables on a Convex deployment.
+ * Must be run from a directory that has `convex` in package.json
+ * (the Convex CLI requires it to be a project dependency).
  */
-function setConvexEnvVar(deployKey: string, name: string, value: string): void {
+export function configureConvexAuthEnvVars(buildDir: string, deployKey: string): void {
+  if (!WORKOS_CLIENT_ID || !WORKOS_API_KEY) {
+    console.warn(`⚠️ WORKOS_CLIENT_ID or WORKOS_API_KEY not set — AuthKit will not work`);
+    return;
+  }
+
+  console.log(`🔐 Configuring WorkOS AuthKit env vars...`);
+  setConvexEnvVar(buildDir, deployKey, 'AUTH_WORKOS_CLIENT_ID', WORKOS_CLIENT_ID);
+  setConvexEnvVar(buildDir, deployKey, 'AUTH_WORKOS_API_KEY', WORKOS_API_KEY);
+  console.log(`✅ WorkOS env vars configured`);
+}
+
+/**
+ * Set an environment variable on a Convex deployment via CLI.
+ * Runs from buildDir which has convex as a package.json dependency.
+ */
+function setConvexEnvVar(buildDir: string, deployKey: string, name: string, value: string): void {
   execSync(`npx convex env set ${name} "${value}"`, {
+    cwd: buildDir,
     env: { ...process.env, CONVEX_DEPLOY_KEY: deployKey },
     stdio: 'pipe',
     timeout: 30_000,

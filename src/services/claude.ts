@@ -112,7 +112,7 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 3. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
 4. If the build fails, fix the errors and retry (max 2 retries).
 5. Only return your final structured output AFTER the build succeeds.
-6. Clean up: rm -rf /tmp/app-build
+6. Do NOT clean up /tmp/app-build — the pipeline needs it to deploy Convex functions.
 
 ## Convex Backend Guidelines
 
