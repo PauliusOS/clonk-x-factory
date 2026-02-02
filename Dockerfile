@@ -22,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install Claude Code CLI globally (required by @anthropic-ai/claude-agent-sdk)
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code CLI + Convex CLI globally
+RUN npm install -g @anthropic-ai/claude-code convex
 
 # Create non-root user (Claude Code refuses --dangerously-skip-permissions as root)
 RUN useradd -m -s /bin/bash appuser

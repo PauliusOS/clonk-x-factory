@@ -25,28 +25,22 @@ interface RawGeneratedApp {
   }[];
 }
 
-const TEMPLATE_DIR = path.join(process.cwd(), 'templates', 'react-vite');
+export type TemplateName = 'react-vite' | 'convex-react-vite';
+
+const TEMPLATES_ROOT = path.join(process.cwd(), 'templates');
 const BUILD_DIR = '/tmp/app-build';
 
 // Load all skills from .claude/skills/ at startup and embed in system prompt.
 // This serves as both the primary delivery mechanism and a fallback if the SDK's
 // native Skill tool has issues. Skills stay in .claude/skills/ as source of truth.
-function loadSkills(): string {
-  const skillsDir = path.join(process.cwd(), '.claude', 'skills');
-  if (!fs.existsSync(skillsDir)) return '';
-
-  const parts: string[] = [];
-  for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
-    if (!fs.existsSync(skillFile)) continue;
-    const content = fs.readFileSync(skillFile, 'utf-8').replace(/^---[\s\S]*?---\n*/m, ''); // strip frontmatter
-    parts.push(content.trim());
-  }
-  return parts.join('\n\n');
+function loadSkill(skillName: string): string {
+  const skillFile = path.join(process.cwd(), '.claude', 'skills', skillName, 'SKILL.md');
+  if (!fs.existsSync(skillFile)) return '';
+  return fs.readFileSync(skillFile, 'utf-8').replace(/^---[\s\S]*?---\n*/m, '').trim();
 }
 
-const SKILLS_CONTENT = loadSkills();
+const FRONTEND_SKILL = loadSkill('frontend-design');
+const CONVEX_SKILL = loadSkill('convex-backend');
 
 const SYSTEM_PROMPT = `You are an expert frontend developer. Generate ONLY the creative source files for a web application based on the user's request.
 
@@ -76,7 +70,57 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 
 ## Design Guidelines
 
-${SKILLS_CONTENT}`;
+${FRONTEND_SKILL}`;
+
+const CONVEX_SYSTEM_PROMPT = `You are an expert full-stack developer. Generate the creative source files AND Convex backend functions for a web application based on the user's request.
+
+Infrastructure files are pre-staged at /tmp/app-build/ — do NOT recreate them. Specifically do NOT create:
+- package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx
+- convex/auth.ts, convex/auth.config.ts, convex/tsconfig.json
+
+The stack is React 18 + TypeScript + Vite + Tailwind CSS (via CDN) + Convex (real-time backend) + WorkOS AuthKit (authentication).
+
+You generate TWO categories of files:
+
+**Frontend (src/):**
+- src/App.tsx — the main application component (REQUIRED)
+- src/components/* — additional React components
+- Any .css files if needed beyond Tailwind
+
+**Backend (convex/):**
+- convex/schema.ts — database schema (REQUIRED)
+- convex/*.ts — server functions (queries, mutations, actions)
+
+The ConvexAuthProvider is already set up in src/main.tsx. Use these imports in your React components:
+- \`import { useQuery, useMutation, useAction } from "convex/react"\`
+- \`import { useConvexAuth } from "convex/react"\`
+- \`import { useAuthActions } from "@convex-dev/auth/react"\`
+- \`import { api } from "../convex/_generated/api"\`
+
+If you need npm packages beyond what's in the template (e.g. framer-motion, lucide-react), list them in "extraDependencies" and install them: cd /tmp/app-build && npm install <pkg>.
+
+Requirements:
+- Full-stack app with real-time Convex backend
+- Include authentication (sign in/out buttons using WorkOS AuthKit)
+- Responsive design
+- All TypeScript must compile cleanly
+- Make it fully functional and polished
+
+BUILD VERIFICATION — you MUST do this before returning your final answer:
+1. Write your files to /tmp/app-build/src/ and /tmp/app-build/convex/ using the Write tool. Do NOT use Bash heredocs.
+2. If you specified extraDependencies, install them: cd /tmp/app-build && npm install <pkg1> <pkg2> 2>&1
+3. Run: cd /tmp/app-build && npm install 2>&1 && npm run build 2>&1
+4. If the build fails, fix the errors and retry (max 2 retries).
+5. Only return your final structured output AFTER the build succeeds.
+6. Clean up: rm -rf /tmp/app-build
+
+## Convex Backend Guidelines
+
+${CONVEX_SKILL}
+
+## Design Guidelines
+
+${FRONTEND_SKILL}`;
 
 const OUTPUT_SCHEMA = {
   type: 'object',
@@ -92,19 +136,19 @@ const OUTPUT_SCHEMA = {
     extraDependencies: {
       type: 'object',
       additionalProperties: { type: 'string' },
-      description: 'Additional npm dependencies beyond react/react-dom, e.g. { "framer-motion": "^11.0.0" }. Only include if actually needed.',
+      description: 'Additional npm dependencies beyond what the template provides. Only include if actually needed.',
     },
     files: {
       type: 'array',
       items: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: 'File path relative to project root (e.g. src/App.tsx, src/components/Header.tsx)' },
+          path: { type: 'string', description: 'File path relative to project root (e.g. src/App.tsx, src/components/Header.tsx, convex/schema.ts)' },
           content: { type: 'string', description: 'Full file content' },
         },
         required: ['path', 'content'],
       },
-      description: 'ONLY creative source files: src/App.tsx (required), src/components/*, src/*.css. Do NOT include package.json, tsconfig.json, vite.config.ts, index.html, or src/main.tsx.',
+      description: 'ONLY creative source files. Do NOT include infrastructure files that are pre-staged in the template.',
     },
   },
   required: ['appName', 'description', 'title', 'fonts', 'files'],
@@ -114,7 +158,12 @@ const OUTPUT_SCHEMA = {
 // Template staging & merge
 // ---------------------------------------------------------------------------
 
-function readTemplateFiles(): { path: string; content: string }[] {
+function getTemplateDir(template: TemplateName): string {
+  return path.join(TEMPLATES_ROOT, template);
+}
+
+function readTemplateFiles(template: TemplateName): { path: string; content: string }[] {
+  const templateDir = getTemplateDir(template);
   const files: { path: string; content: string }[] = [];
 
   function walk(dir: string, prefix = '') {
@@ -129,19 +178,20 @@ function readTemplateFiles(): { path: string; content: string }[] {
     }
   }
 
-  walk(TEMPLATE_DIR);
+  walk(templateDir);
   return files;
 }
 
 /**
  * Pre-stage template files to /tmp/app-build/ so Claude only needs to write creative files.
  * index.html is staged without fonts (fonts don't affect build, they're runtime-only).
+ * For Convex templates, also writes .env.local with VITE_CONVEX_URL.
  */
-function stageTemplateToBuildDir(): void {
+function stageTemplateToBuildDir(template: TemplateName, convexUrl?: string): void {
   // Clean up any previous build
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
-  const templateFiles = readTemplateFiles();
+  const templateFiles = readTemplateFiles(template);
   for (const file of templateFiles) {
     let targetPath: string;
     let content = file.content;
@@ -157,14 +207,20 @@ function stageTemplateToBuildDir(): void {
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.writeFileSync(targetPath, content);
   }
+
+  // For Convex templates, write .env.local so the frontend build can resolve VITE_CONVEX_URL
+  if (template === 'convex-react-vite' && convexUrl) {
+    fs.writeFileSync(path.join(BUILD_DIR, '.env.local'), `VITE_CONVEX_URL=${convexUrl}\n`);
+  }
 }
 
 /**
  * Merge template files with Claude's creative output for deployment.
  * Processes index.html template with fonts/title, merges extra deps into package.json.
+ * For Convex templates, also injects VITE_CONVEX_URL into .env.local.
  */
-function mergeWithTemplate(raw: RawGeneratedApp): GeneratedApp {
-  const templateFiles = readTemplateFiles();
+function mergeWithTemplate(raw: RawGeneratedApp, template: TemplateName, convexUrl?: string): GeneratedApp {
+  const templateFiles = readTemplateFiles(template);
   const mergedFiles: { path: string; content: string }[] = [];
 
   for (const tmpl of templateFiles) {
@@ -185,7 +241,12 @@ function mergeWithTemplate(raw: RawGeneratedApp): GeneratedApp {
     }
   }
 
-  // Dedup: skip creative files that collide with template paths
+  // For Convex templates, add .env.local with the deployment URL
+  if (template === 'convex-react-vite' && convexUrl) {
+    mergedFiles.push({ path: '.env.local', content: `VITE_CONVEX_URL=${convexUrl}\n` });
+  }
+
+  // Dedup: if Claude rewrites a template file, keep Claude's version
   const templatePaths = new Set(mergedFiles.map((f) => f.path));
   for (const file of raw.files) {
     if (!templatePaths.has(file.path)) {
@@ -201,79 +262,13 @@ function mergeWithTemplate(raw: RawGeneratedApp): GeneratedApp {
 }
 
 // ---------------------------------------------------------------------------
-// Main generation function
+// Shared query runner
 // ---------------------------------------------------------------------------
 
-export async function generateApp(
-  idea: string,
-  imageUrls?: string[],
-  parentContext?: { text: string; imageUrls: string[] },
-  username?: string,
-): Promise<GeneratedApp> {
-  console.log(`🤖 Generating app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
-
-  // Build the user prompt parts
-  const promptParts: string[] = [];
-
-  if (parentContext) {
-    promptParts.push(`The user replied to the following tweet with their build request. Use this original post as the primary context for what to build:\n\n"${parentContext.text}"`);
-  }
-
-  promptParts.push(`Build a web app for: "${idea}"`);
-
-  const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
-  promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
-
-  promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');
-
-  const textPrompt = promptParts.join('\n\n');
-
-  // Build content blocks for images + text
-  const hasImages = (imageUrls?.length ?? 0) > 0 || (parentContext?.imageUrls.length ?? 0) > 0;
-
-  let prompt: string | AsyncIterable<any>;
-
-  if (hasImages) {
-    const contentBlocks: any[] = [];
-
-    if (parentContext?.imageUrls.length) {
-      for (const url of parentContext.imageUrls) {
-        contentBlocks.push({ type: 'image', source: { type: 'url', url } });
-      }
-      contentBlocks.push({
-        type: 'text',
-        text: 'The above image(s) were attached to the original post. Use them as visual reference for the app design.',
-      });
-    }
-
-    if (imageUrls?.length) {
-      for (const url of imageUrls) {
-        contentBlocks.push({ type: 'image', source: { type: 'url', url } });
-      }
-      contentBlocks.push({
-        type: 'text',
-        text: 'The above image(s) were attached to the tweet. Use them as visual reference — they may be wireframes, mockups, screenshots, or inspiration images. Try to match the layout, colors, and style shown.',
-      });
-    }
-
-    contentBlocks.push({ type: 'text', text: textPrompt });
-
-    async function* generateMessages() {
-      yield {
-        type: 'user' as const,
-        message: { role: 'user' as const, content: contentBlocks },
-      };
-    }
-    prompt = generateMessages();
-  } else {
-    prompt = textPrompt;
-  }
-
-  // Pre-stage template files so Claude only writes creative src/ files
-  console.log('📋 Staging template files to /tmp/app-build/...');
-  stageTemplateToBuildDir();
-
-  // Generate creative files with Claude (Bash for build verification)
+async function runClaudeQuery(
+  prompt: string | AsyncIterable<any>,
+  systemPrompt: string,
+): Promise<RawGeneratedApp> {
   let result: SDKResultSuccess | null = null;
   let lastError: string | null = null;
 
@@ -290,7 +285,7 @@ export async function generateApp(
       allowDangerouslySkipPermissions: true,
       persistSession: false,
       maxTurns: 20,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
       outputFormat: {
         type: 'json_schema',
         schema: OUTPUT_SCHEMA,
@@ -315,11 +310,122 @@ export async function generateApp(
     throw new Error(`Failed to get structured output from Claude: ${lastError || 'unknown error'}`);
   }
 
-  const rawApp = result.structured_output as RawGeneratedApp;
+  return result.structured_output as RawGeneratedApp;
+}
+
+// ---------------------------------------------------------------------------
+// Build multimodal prompt from images + text
+// ---------------------------------------------------------------------------
+
+function buildPrompt(
+  textPrompt: string,
+  imageUrls?: string[],
+  parentContext?: { text: string; imageUrls: string[] },
+): string | AsyncIterable<any> {
+  const hasImages = (imageUrls?.length ?? 0) > 0 || (parentContext?.imageUrls.length ?? 0) > 0;
+
+  if (!hasImages) return textPrompt;
+
+  const contentBlocks: any[] = [];
+
+  if (parentContext?.imageUrls.length) {
+    for (const url of parentContext.imageUrls) {
+      contentBlocks.push({ type: 'image', source: { type: 'url', url } });
+    }
+    contentBlocks.push({
+      type: 'text',
+      text: 'The above image(s) were attached to the original post. Use them as visual reference for the app design.',
+    });
+  }
+
+  if (imageUrls?.length) {
+    for (const url of imageUrls) {
+      contentBlocks.push({ type: 'image', source: { type: 'url', url } });
+    }
+    contentBlocks.push({
+      type: 'text',
+      text: 'The above image(s) were attached to the tweet. Use them as visual reference — they may be wireframes, mockups, screenshots, or inspiration images. Try to match the layout, colors, and style shown.',
+    });
+  }
+
+  contentBlocks.push({ type: 'text', text: textPrompt });
+
+  async function* generateMessages() {
+    yield {
+      type: 'user' as const,
+      message: { role: 'user' as const, content: contentBlocks },
+    };
+  }
+  return generateMessages();
+}
+
+// ---------------------------------------------------------------------------
+// Main generation functions
+// ---------------------------------------------------------------------------
+
+export async function generateApp(
+  idea: string,
+  imageUrls?: string[],
+  parentContext?: { text: string; imageUrls: string[] },
+  username?: string,
+): Promise<GeneratedApp> {
+  console.log(`🤖 Generating app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
+
+  const promptParts: string[] = [];
+  if (parentContext) {
+    promptParts.push(`The user replied to the following tweet with their build request. Use this original post as the primary context for what to build:\n\n"${parentContext.text}"`);
+  }
+  promptParts.push(`Build a web app for: "${idea}"`);
+  const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
+  promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
+  promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');
+
+  const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+
+  console.log('📋 Staging template files to /tmp/app-build/...');
+  stageTemplateToBuildDir('react-vite');
+
+  const rawApp = await runClaudeQuery(prompt, SYSTEM_PROMPT);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
-  // Merge with template (adds fonts to index.html, extra deps to package.json)
-  const mergedApp = mergeWithTemplate(rawApp);
+  const mergedApp = mergeWithTemplate(rawApp, 'react-vite');
+  console.log(`📦 Merged to ${mergedApp.files.length} total files (template + creative)`);
+
+  return mergedApp;
+}
+
+/**
+ * Generate a full-stack Convex app. Same flow as generateApp but uses the
+ * Convex template and system prompt, and injects VITE_CONVEX_URL.
+ */
+export async function generateConvexApp(
+  idea: string,
+  convexDeploymentUrl: string,
+  imageUrls?: string[],
+  parentContext?: { text: string; imageUrls: string[] },
+  username?: string,
+): Promise<GeneratedApp> {
+  console.log(`🤖 Generating Convex app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
+
+  const promptParts: string[] = [];
+  if (parentContext) {
+    promptParts.push(`The user replied to the following tweet with their build request. Use this original post as the primary context for what to build:\n\n"${parentContext.text}"`);
+  }
+  promptParts.push(`Build a full-stack web app with a Convex backend for: "${idea}"`);
+  promptParts.push(`The app should have real-time data, authentication (WorkOS AuthKit sign-in/sign-out), and a polished UI.`);
+  const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
+  promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
+  promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');
+
+  const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+
+  console.log('📋 Staging Convex template files to /tmp/app-build/...');
+  stageTemplateToBuildDir('convex-react-vite', convexDeploymentUrl);
+
+  const rawApp = await runClaudeQuery(prompt, CONVEX_SYSTEM_PROMPT);
+  console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
+
+  const mergedApp = mergeWithTemplate(rawApp, 'convex-react-vite', convexDeploymentUrl);
   console.log(`📦 Merged to ${mergedApp.files.length} total files (template + creative)`);
 
   return mergedApp;

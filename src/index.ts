@@ -104,7 +104,10 @@ async function pollMentions() {
         continue;
       }
 
-      // Extract idea (remove @mentions and trigger keywords)
+      // Detect @convex backend request (case-insensitive)
+      const wantsConvex = tweetLower.includes('@convex');
+
+      // Extract idea (remove @mentions, trigger keywords, and @convex tag)
       const idea = tweet.text
         .replace(/@\w+/g, '')
         .replace(/\b(build|make|create)\b/gi, '')
@@ -156,7 +159,7 @@ async function pollMentions() {
       }
       console.log('🤖 AI classification: confirmed build request, proceeding');
 
-      console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}`);
+      console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
 
       // Mark as processing
       processingTweets.add(tweet.id);
@@ -169,6 +172,7 @@ async function pollMentions() {
         username,
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         parentContext,
+        backend: wantsConvex ? 'convex' : undefined,
       })
         .catch((error: any) => {
           console.error('Pipeline error:', error.message || error);
