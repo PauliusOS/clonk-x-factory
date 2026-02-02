@@ -10,7 +10,7 @@ export const api: any = new Proxy(
       new Proxy(
         {},
         {
-          get: (_t, fnName) => `${String(tableName)}.${String(fnName)}`,
+          get: (_t, fnName) => `${String(tableName)}:${String(fnName)}`,
         },
       ),
   },
