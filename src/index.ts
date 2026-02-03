@@ -104,8 +104,10 @@ async function pollMentions() {
         continue;
       }
 
-      // Detect @convex backend request (case-insensitive)
-      const wantsConvex = tweetLower.includes('@convex');
+      // Detect if the app needs a backend (Convex)
+      // Triggers: mentions "convex", or describes needing a backend/database/auth/login/real-time
+      const BACKEND_KEYWORDS = ['convex', 'backend', 'database', 'real-time', 'realtime', 'login', 'sign in', 'signup', 'sign up', 'auth', 'users', 'accounts'];
+      const wantsConvex = BACKEND_KEYWORDS.some(kw => tweetLower.includes(kw));
 
       // Extract idea (remove @mentions, trigger keywords, and @convex tag)
       const idea = tweet.text
