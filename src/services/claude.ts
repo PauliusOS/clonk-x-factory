@@ -283,11 +283,20 @@ async function runClaudeQuery(
   systemPrompt: string,
   maxTurns: number = 20,
 ): Promise<RawGeneratedApp> {
+  // Hard timeout: 5 minutes. Protects against SDK getting stuck in retry loops
+  // (e.g. when hitting repeated 500s from the API).
+  const HARD_TIMEOUT_MS = 5 * 60 * 1000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HARD_TIMEOUT_MS);
+
   let result: SDKResultSuccess | null = null;
   let lastError: string | null = null;
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 5;
 
   let turnCount = 0;
 
+  try {
   for await (const message of query({
     prompt,
     options: {
@@ -318,6 +327,7 @@ async function runClaudeQuery(
 
     if (msg.type === 'assistant') {
       turnCount++;
+      consecutiveErrors = 0; // Reset on successful turn
       // Log assistant text (truncated)
       const text = msg.message?.content
         ?.filter((b: any) => b.type === 'text')
@@ -350,10 +360,22 @@ async function runClaudeQuery(
         result = msg as SDKResultSuccess;
         console.log(`  ✅ [turn ${turnCount}] Generation complete`);
       } else {
+        consecutiveErrors++;
         lastError = msg.errors?.join(', ') || msg.subtype || 'unknown';
-        console.error(`  ❌ [turn ${turnCount}] Agent SDK error: ${lastError}`);
+        console.error(`  ❌ [turn ${turnCount}] Agent SDK error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${lastError}`);
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          throw new Error(`Aborting: ${MAX_CONSECUTIVE_ERRORS} consecutive errors from Claude API: ${lastError}`);
+        }
       }
     }
+  }
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`Claude query timed out after ${HARD_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (!result?.structured_output) {
