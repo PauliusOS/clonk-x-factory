@@ -84,28 +84,28 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
       generatedApp!.files
     );
 
-    // GitHub repo + screenshot in parallel
+    // GitHub repo + wait for deploy in parallel
     const stepNum2 = input.backend === 'convex' ? '5️⃣' : '3️⃣';
-    console.log(`\n${stepNum2} Creating GitHub repo + waiting for deploy & taking screenshot...`);
-    const [githubUrl, mediaIds] = await Promise.all([
+    console.log(`\n${stepNum2} Creating GitHub repo + waiting for deploy...`);
+    const [githubUrl] = await Promise.all([
       createGitHubRepo(
         generatedApp!.appName,
         generatedApp!.description,
         generatedApp!.files
       ),
-      (async (): Promise<string[] | undefined> => {
-        try {
-          await waitForDeployment(deploymentId);
-          const screenshot = await takeScreenshot(vercelUrl);
-          const mediaId = await uploadMedia(screenshot);
-          return [mediaId];
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Unknown error';
-          console.warn(`⚠️ Screenshot failed (non-fatal): ${msg}`);
-          return undefined;
-        }
-      })(),
+      waitForDeployment(deploymentId),
     ]);
+
+    // Screenshot (non-fatal — don't block the reply if this fails)
+    let mediaIds: string[] | undefined;
+    try {
+      const screenshot = await takeScreenshot(vercelUrl);
+      const mediaId = await uploadMedia(screenshot);
+      mediaIds = [mediaId];
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.warn(`⚠️ Screenshot failed (non-fatal): ${msg}`);
+    }
 
     // Reply with links + optional screenshot
     const stepNum3 = input.backend === 'convex' ? '6️⃣' : '4️⃣';
