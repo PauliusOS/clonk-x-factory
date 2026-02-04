@@ -14,20 +14,16 @@ export interface GeneratedApp {
   buildDir?: string; // Unique build dir path (needed for Convex deploy step)
 }
 
-// Raw output from Claude — only creative files + metadata
+// Raw output from Claude — metadata only (files are read from disk)
 interface RawGeneratedApp {
   appName: string;
   description: string;
   title: string;
   fonts: string[];
   extraDependencies?: Record<string, string>;
-  files: {
-    path: string;
-    content: string;
-  }[];
 }
 
-export type TemplateName = 'react-vite' | 'convex-react-vite';
+export type TemplateName = 'react-vite' | 'convex-react-vite' | 'threejs-react-vite';
 
 const TEMPLATES_ROOT = path.join(process.cwd(), 'templates');
 
@@ -64,7 +60,7 @@ If you need npm packages beyond react/react-dom (e.g. framer-motion, three, rech
 
 Requirements:
 - Client-side only SPA, no backend/API calls, no external paid services
-- Responsive design
+- Mobile-friendly responsive design — the app MUST look great on desktops AND be fully usable on phones (375px+) and tablets. Use Tailwind responsive prefixes to ensure layouts adapt properly across all screen sizes.
 - All TypeScript must compile cleanly — no unused variables, no type errors
 - Make it fully functional and polished
 
@@ -74,7 +70,8 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 3. Run: cd ${buildDir} && npm install 2>&1 && npm run build 2>&1
 4. If the build fails, fix the errors and retry (max 2 retries).
 5. Only return your final structured output AFTER the build succeeds.
-6. Clean up: rm -rf ${buildDir}
+6. Do NOT clean up ${buildDir} — the pipeline reads your files from disk.
+7. Do NOT re-read files for the structured output. The pipeline reads them from disk automatically. Your structured output only needs metadata (appName, description, title, fonts, extraDependencies).
 
 ## Design Guidelines
 
@@ -112,7 +109,7 @@ If you need npm packages beyond what's in the template (e.g. framer-motion, luci
 Requirements:
 - Full-stack app with real-time Convex backend
 - Include authentication (email/password sign-in/sign-up using Convex Auth)
-- Responsive design
+- Mobile-friendly responsive design — the app MUST look great on desktops AND be fully usable on phones (375px+) and tablets. Use Tailwind responsive prefixes to ensure layouts adapt properly across all screen sizes.
 - All TypeScript in src/ must compile cleanly (convex/ files are NOT compiled by tsc — they are compiled separately by the Convex CLI)
 - Make it fully functional and polished
 
@@ -125,10 +122,121 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 4. The build only compiles src/ files (not convex/). If it fails, fix only src/ errors and retry (max 2 retries).
 5. Only return your final structured output AFTER the build succeeds.
 6. Do NOT clean up ${buildDir} — the pipeline needs it to deploy Convex functions.
+7. Do NOT re-read files for the structured output. The pipeline reads them from disk automatically. Your structured output only needs metadata (appName, description, title, fonts, extraDependencies).
 
 ## Convex Backend Guidelines
 
 ${CONVEX_SKILL}
+
+## Design Guidelines
+
+${FRONTEND_SKILL}`;
+}
+
+function makeThreeJsSystemPrompt(buildDir: string): string {
+  return `You are an expert 3D web developer. Generate ONLY the creative source files for an interactive 3D web application based on the user's request.
+
+Infrastructure files (package.json, tsconfig.json, vite.config.ts, index.html, src/main.tsx) are pre-staged at ${buildDir}/ — do NOT recreate them.
+
+The stack is React 18 + TypeScript + Vite + Tailwind CSS (via CDN) + **Three.js via React Three Fiber (@react-three/fiber) + Drei (@react-three/drei)**.
+
+These packages are already in the template's package.json — do NOT add them to extraDependencies:
+- three
+- @react-three/fiber
+- @react-three/drei
+- @types/three
+
+## Three.js / React Three Fiber Guidelines
+
+Use React Three Fiber (R3F) for all 3D rendering. Key patterns:
+
+**Scene Setup:**
+\`\`\`tsx
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls, Environment } from '@react-three/drei'
+
+function App() {
+  return (
+    <div style={{ width: '100vw', height: '100vh' }}>
+      <Canvas camera={{ position: [0, 2, 5], fov: 60 }}>
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[5, 5, 5]} intensity={1} />
+        <OrbitControls enableDamping />
+        <Environment preset="sunset" />
+        {/* Your 3D objects here */}
+      </Canvas>
+    </div>
+  )
+}
+\`\`\`
+
+**Useful Drei helpers** (already installed, use freely):
+- \`OrbitControls\` — interactive camera rotation/zoom
+- \`Environment\` — HDR environment maps (presets: "sunset", "dawn", "night", "warehouse", "forest", "apartment", "studio", "city", "park", "lobby")
+- \`Text\` / \`Text3D\` — 3D text rendering
+- \`Float\` — makes objects float/bob
+- \`MeshWobbleMaterial\`, \`MeshDistortMaterial\` — animated materials
+- \`Stars\`, \`Sky\`, \`Cloud\` — atmospheric effects
+- \`Html\` — embed HTML inside 3D scene
+- \`useGLTF\` — load 3D models (GLTF/GLB)
+- \`RoundedBox\`, \`Sphere\`, \`Torus\`, \`Plane\` — geometry primitives
+- \`PerspectiveCamera\`, \`OrthographicCamera\` — camera components
+- \`ContactShadows\`, \`AccumulativeShadows\`, \`SoftShadows\` — shadow systems
+- \`Center\` — center group of objects
+
+**Animation with useFrame:**
+\`\`\`tsx
+import { useFrame } from '@react-three/fiber'
+import { useRef } from 'react'
+import * as THREE from 'three'
+
+function SpinningBox() {
+  const ref = useRef<THREE.Mesh>(null!)
+  useFrame((state, delta) => {
+    ref.current.rotation.y += delta
+  })
+  return (
+    <mesh ref={ref}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshStandardMaterial color="hotpink" />
+    </mesh>
+  )
+}
+\`\`\`
+
+**Interactive objects:**
+\`\`\`tsx
+<mesh
+  onClick={(e) => { /* handle click */ }}
+  onPointerOver={(e) => { /* hover in */ }}
+  onPointerOut={(e) => { /* hover out */ }}
+>
+  <sphereGeometry args={[1, 32, 32]} />
+  <meshStandardMaterial color="royalblue" />
+</mesh>
+\`\`\`
+
+## Requirements
+- The 3D canvas should be responsive and fill the viewport (or a large portion of it)
+- Include interactive camera controls (OrbitControls at minimum)
+- Add proper lighting (ambient + directional/point lights)
+- Make objects interactive where it makes sense (hover effects, click handlers)
+- Use Drei helpers to make the scene visually rich (environment maps, shadows, atmospheric effects)
+- Client-side only SPA, no backend/API calls
+- All TypeScript must compile cleanly
+- You can add a Tailwind-styled UI overlay (HUD, controls panel, info cards) on top of the 3D canvas using absolute positioning or Drei's Html component
+- Mobile-friendly: ensure touch controls work for orbit/zoom, and any UI overlays are usable on small screens
+
+If you need additional npm packages beyond what's in the template (e.g. framer-motion, gsap, @react-three/rapier for physics, @react-three/postprocessing for effects), list them in "extraDependencies" and install them: cd ${buildDir} && npm install <pkg>.
+
+BUILD VERIFICATION — you MUST do this before returning your final answer:
+1. Write your creative source files to ${buildDir}/src/ using the Write tool. Do NOT use Bash heredocs.
+2. If you specified extraDependencies, install them: cd ${buildDir} && npm install <pkg1> <pkg2> 2>&1
+3. Run: cd ${buildDir} && npm install 2>&1 && npm run build 2>&1
+4. If the build fails, fix the errors and retry (max 2 retries).
+5. Only return your final structured output AFTER the build succeeds.
+6. Do NOT clean up ${buildDir} — the pipeline reads your files from disk.
+7. Do NOT re-read files for the structured output. The pipeline reads them from disk automatically. Your structured output only needs metadata (appName, description, title, fonts, extraDependencies).
 
 ## Design Guidelines
 
@@ -151,20 +259,8 @@ const OUTPUT_SCHEMA = {
       additionalProperties: { type: 'string' },
       description: 'Additional npm dependencies beyond what the template provides. Only include if actually needed.',
     },
-    files: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: 'File path relative to project root (e.g. src/App.tsx, src/components/Header.tsx, convex/schema.ts)' },
-          content: { type: 'string', description: 'Full file content' },
-        },
-        required: ['path', 'content'],
-      },
-      description: 'ONLY creative source files. Do NOT include infrastructure files that are pre-staged in the template.',
-    },
   },
-  required: ['appName', 'description', 'title', 'fonts', 'files'],
+  required: ['appName', 'description', 'title', 'fonts'],
 };
 
 // ---------------------------------------------------------------------------
@@ -232,7 +328,7 @@ function stageTemplateToBuildDir(template: TemplateName, buildDir: string, conve
  * Processes index.html template with fonts/title, merges extra deps into package.json.
  * For Convex templates, also injects VITE_CONVEX_URL into .env.local.
  */
-function mergeWithTemplate(raw: RawGeneratedApp, template: TemplateName, convexUrl?: string): GeneratedApp {
+function mergeWithTemplate(raw: RawGeneratedApp & { files: { path: string; content: string }[] }, template: TemplateName, convexUrl?: string): GeneratedApp {
   const templateFiles = readTemplateFiles(template);
   const mergedFiles: { path: string; content: string }[] = [];
 
@@ -275,14 +371,49 @@ function mergeWithTemplate(raw: RawGeneratedApp, template: TemplateName, convexU
 }
 
 // ---------------------------------------------------------------------------
+// Read creative files from disk (replaces structured output files)
+// ---------------------------------------------------------------------------
+
+/** Read all creative files Claude wrote to the build dir (src/**, convex/**, *.css). */
+function readCreativeFilesFromDisk(buildDir: string): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+  // Directories that contain Claude-generated creative files
+  const creativeDirs = ['src', 'convex'];
+
+  for (const dir of creativeDirs) {
+    const dirPath = path.join(buildDir, dir);
+    if (!fs.existsSync(dirPath)) continue;
+
+    function walk(currentDir: string, prefix: string) {
+      for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+        const fullPath = path.join(currentDir, entry.name);
+        const relativePath = `${prefix}/${entry.name}`;
+        if (entry.isDirectory()) {
+          // Skip _generated dirs (Convex auto-generated)
+          if (entry.name === '_generated' || entry.name === 'node_modules') continue;
+          walk(fullPath, relativePath);
+        } else {
+          files.push({ path: relativePath, content: fs.readFileSync(fullPath, 'utf-8') });
+        }
+      }
+    }
+
+    walk(dirPath, dir);
+  }
+
+  return files;
+}
+
+// ---------------------------------------------------------------------------
 // Shared query runner
 // ---------------------------------------------------------------------------
 
 async function runClaudeQuery(
   prompt: string | AsyncIterable<any>,
   systemPrompt: string,
+  buildDir: string,
   maxTurns: number = 20,
-): Promise<RawGeneratedApp> {
+): Promise<RawGeneratedApp & { files: { path: string; content: string }[] }> {
   // Hard timeout: 5 minutes. Protects against SDK getting stuck in retry loops
   // (e.g. when hitting repeated 500s from the API).
   const HARD_TIMEOUT_MS = 5 * 60 * 1000;
@@ -382,7 +513,11 @@ async function runClaudeQuery(
     throw new Error(`Failed to get structured output from Claude: ${lastError || 'unknown error'}`);
   }
 
-  return result.structured_output as RawGeneratedApp;
+  const metadata = result.structured_output as RawGeneratedApp;
+  const files = readCreativeFilesFromDisk(buildDir);
+  console.log(`  📂 Read ${files.length} creative files from disk`);
+
+  return { ...metadata, files };
 }
 
 // ---------------------------------------------------------------------------
@@ -458,11 +593,14 @@ export async function generateApp(
   console.log(`📋 Staging template files to ${buildDir}/...`);
   stageTemplateToBuildDir('react-vite', buildDir);
 
-  const rawApp = await runClaudeQuery(prompt, makeSystemPrompt(buildDir));
+  const rawApp = await runClaudeQuery(prompt, makeSystemPrompt(buildDir), buildDir);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'react-vite');
   console.log(`📦 Merged to ${mergedApp.files.length} total files (template + creative)`);
+
+  // Clean up build dir (static apps don't need it after merge)
+  fs.rmSync(buildDir, { recursive: true, force: true });
 
   return mergedApp;
 }
@@ -496,12 +634,52 @@ export async function generateConvexApp(
   console.log(`📋 Staging Convex template files to ${buildDir}/...`);
   stageTemplateToBuildDir('convex-react-vite', buildDir, convexDeploymentUrl);
 
-  const rawApp = await runClaudeQuery(prompt, makeConvexSystemPrompt(buildDir), 15);
+  const rawApp = await runClaudeQuery(prompt, makeConvexSystemPrompt(buildDir), buildDir, 15);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'convex-react-vite', convexDeploymentUrl);
   mergedApp.buildDir = buildDir;
   console.log(`📦 Merged to ${mergedApp.files.length} total files (template + creative)`);
+
+  return mergedApp;
+}
+
+/**
+ * Generate a Three.js / 3D app. Uses React Three Fiber + Drei on top of
+ * the standard Vite + React stack. Same deploy flow as generateApp (static).
+ */
+export async function generateThreeJsApp(
+  idea: string,
+  imageUrls?: string[],
+  parentContext?: { text: string; imageUrls: string[] },
+  username?: string,
+): Promise<GeneratedApp> {
+  console.log(`🤖 Generating Three.js app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
+
+  const promptParts: string[] = [];
+  if (parentContext) {
+    promptParts.push(`The user replied to the following tweet with their build request. Use this original post as the primary context for what to build:\n\n"${parentContext.text}"`);
+  }
+  promptParts.push(`Build an interactive 3D web app for: "${idea}"`);
+  promptParts.push(`Use React Three Fiber (<Canvas>) for the 3D scene and Drei helpers for controls, lighting, and effects. Make it visually impressive and interactive.`);
+  const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
+  promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size). Use absolute positioning or an overlay so it doesn't interfere with the 3D canvas.`);
+  promptParts.push('Use /frontend-design and follow the Design Guidelines to make any UI chrome visually stunning and distinctive.');
+
+  const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+
+  const buildDir = createBuildDir();
+  console.log(`📋 Staging Three.js template files to ${buildDir}/...`);
+  stageTemplateToBuildDir('threejs-react-vite', buildDir);
+
+  const rawApp = await runClaudeQuery(prompt, makeThreeJsSystemPrompt(buildDir), buildDir);
+  console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
+
+  const mergedApp = mergeWithTemplate(rawApp, 'threejs-react-vite');
+  console.log(`📦 Merged to ${mergedApp.files.length} total files (template + creative)`);
+
+  // Clean up build dir (static apps don't need it after merge)
+  fs.rmSync(buildDir, { recursive: true, force: true });
 
   return mergedApp;
 }

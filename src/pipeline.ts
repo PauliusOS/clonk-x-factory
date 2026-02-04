@@ -1,4 +1,4 @@
-import { generateApp, generateConvexApp } from './services/claude';
+import { generateApp, generateConvexApp, generateThreeJsApp } from './services/claude';
 import { deployToVercel, waitForDeployment } from './services/vercel';
 import { createGitHubRepo } from './services/github';
 import { replyToTweet, uploadMedia } from './services/xClient';
@@ -14,10 +14,11 @@ export interface PipelineInput {
   imageUrls?: string[];
   parentContext?: { text: string; imageUrls: string[] };
   backend?: 'convex';
+  template?: 'threejs';
 }
 
 export async function processTweetToApp(input: PipelineInput): Promise<void> {
-  console.log(`\n🚀 Starting pipeline for: "${input.idea}"${input.backend ? ` (backend: ${input.backend})` : ''}\n`);
+  console.log(`\n🚀 Starting pipeline for: "${input.idea}"${input.template ? ` (template: ${input.template})` : ''}${input.backend ? ` (backend: ${input.backend})` : ''}\n`);
 
   try {
     let generatedApp: Awaited<ReturnType<typeof generateApp>> | undefined;
@@ -60,7 +61,13 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
       }
     }
 
-    if (!input.backend) {
+    if (!generatedApp && input.template === 'threejs') {
+      // Three.js flow: generate 3D React app (static, no backend)
+      console.log('1️⃣ Generating Three.js 3D app code...');
+      generatedApp = await generateThreeJsApp(input.idea, input.imageUrls, input.parentContext, input.username);
+    }
+
+    if (!input.backend && !generatedApp) {
       // Standard flow: generate static React app
       console.log('1️⃣ Generating app code...');
       generatedApp = await generateApp(input.idea, input.imageUrls, input.parentContext, input.username);

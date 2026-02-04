@@ -104,10 +104,14 @@ async function pollMentions() {
         continue;
       }
 
+      // Detect if the app is a 3D / game / Three.js request
+      const THREEJS_KEYWORDS = ['3d', 'game', 'threejs', 'three.js', 'three js', 'webgl', 'webgpu', '3d game'];
+      const wantsThreeJs = THREEJS_KEYWORDS.some(kw => tweetLower.includes(kw));
+
       // Detect if the app needs a backend (Convex)
       // Triggers: mentions "convex", or describes needing a backend/database/auth/login/real-time
       const BACKEND_KEYWORDS = ['convex', 'backend', 'database', 'real-time', 'realtime', 'login', 'sign in', 'signup', 'sign up', 'auth', 'users', 'accounts'];
-      const wantsConvex = BACKEND_KEYWORDS.some(kw => tweetLower.includes(kw));
+      const wantsConvex = !wantsThreeJs && BACKEND_KEYWORDS.some(kw => tweetLower.includes(kw));
 
       // Extract idea (remove @mentions, trigger keywords, and @convex tag)
       const idea = tweet.text
@@ -161,7 +165,7 @@ async function pollMentions() {
       }
       console.log('🤖 AI classification: confirmed build request, proceeding');
 
-      console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
+      console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
 
       // Mark as processing
       processingTweets.add(tweet.id);
@@ -175,6 +179,7 @@ async function pollMentions() {
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         parentContext,
         backend: wantsConvex ? 'convex' : undefined,
+        template: wantsThreeJs ? 'threejs' : undefined,
       })
         .catch((error: any) => {
           console.error('Pipeline error:', error.message || error);

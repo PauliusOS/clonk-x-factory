@@ -35,6 +35,19 @@ Focus on:
 
 NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
 
+## Mobile-Friendly Design
+
+Every app MUST be fully usable on both desktop and mobile devices. Design for desktop but ensure everything works perfectly on mobile too:
+
+- **Touch Targets**: All interactive elements (buttons, links, inputs) must be at least 44×44px. Add generous padding to tap targets — fingers are imprecise.
+- **Viewport & Scaling**: Never use fixed pixel widths on containers. Use `max-w-screen-*`, percentages, `vw`/`vh` (with `dvh` for mobile viewport), or fluid Tailwind utilities. Ensure no horizontal scrolling on any screen size.
+- **Responsive Typography**: Use Tailwind responsive prefixes (`text-sm md:text-base lg:text-lg`) or `clamp()` for fluid type scaling. Headlines that look great on desktop must not overflow or be unreadably large on a 375px screen.
+- **Layout Adaptation**: Use single-column layouts on mobile. Multi-column grids (`grid-cols-2`, `grid-cols-3`) must collapse to fewer columns on small screens (e.g. `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`). Sidebars should become drawers or collapse behind a toggle on mobile.
+- **Spacing & Overflow**: Reduce padding/margins on mobile (`p-4 md:p-8 lg:p-12`). Ensure no content is clipped or hidden behind fixed elements. Test that scroll containers work properly with touch.
+- **Navigation**: Use mobile-friendly nav patterns — bottom sheets, hamburger menus, or tab bars — rather than wide horizontal navbars that break on small screens.
+- **Images & Media**: Use `max-w-full` and `object-cover`/`object-contain` so media scales without breaking layout. Avoid fixed-dimension images.
+- **Forms & Inputs**: Use appropriate input types (`type="email"`, `type="tel"`, `inputmode="numeric"`) for better mobile keyboards. Make form fields full-width on mobile. Ensure sufficient spacing between form elements for easy tapping.
+
 Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
 
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
