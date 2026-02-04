@@ -20,41 +20,61 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
   console.log(`\n🚀 Starting pipeline for: "${input.idea}"${input.backend ? ` (backend: ${input.backend})` : ''}\n`);
 
   try {
-    let generatedApp;
+    let generatedApp: Awaited<ReturnType<typeof generateApp>> | undefined;
 
     if (input.backend === 'convex') {
       // Convex flow: create project -> generate app -> deploy backend -> deploy frontend
       console.log('1️⃣ Creating Convex project...');
-      const convex = await createConvexProject(input.idea.replace(/\s+/g, '-').toLowerCase().slice(0, 40));
+      // Sanitize project name: lowercase, hyphens, no special chars
+      const sanitizedName = input.idea
+        .replace(/[^a-zA-Z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .toLowerCase()
+        .slice(0, 40);
 
-      console.log('\n2️⃣ Generating Convex app code...');
-      generatedApp = await generateConvexApp(
-        input.idea,
-        convex.deploymentUrl,
-        input.imageUrls,
-        input.parentContext,
-        input.username,
-      );
+      try {
+        const convex = await createConvexProject(sanitizedName);
 
-      const buildDir = generatedApp.buildDir!;
-      console.log('\n3️⃣ Configuring auth + deploying Convex backend...');
-      await configureConvexAuthKeys(convex.deploymentUrl, convex.deployKey);
-      await deployConvexBackend(buildDir, convex.deployKey);
-    } else {
+        console.log('\n2️⃣ Generating Convex app code...');
+        generatedApp = await generateConvexApp(
+          input.idea,
+          convex.deploymentUrl,
+          input.imageUrls,
+          input.parentContext,
+          input.username,
+        );
+
+        const buildDir = generatedApp.buildDir!;
+        console.log('\n3️⃣ Configuring auth + deploying Convex backend...');
+        await configureConvexAuthKeys(convex.deploymentUrl, convex.deployKey);
+        await deployConvexBackend(buildDir, convex.deployKey);
+      } catch (convexError: unknown) {
+        const msg = convexError instanceof Error ? convexError.message : String(convexError);
+        const isQuota = msg.includes('ProjectQuotaReached') || msg.includes('project quota');
+        if (isQuota) {
+          console.warn('⚠️ Convex project quota reached — falling back to static build');
+          input.backend = undefined;
+        } else {
+          throw convexError;
+        }
+      }
+    }
+
+    if (!input.backend) {
       // Standard flow: generate static React app
       console.log('1️⃣ Generating app code...');
       generatedApp = await generateApp(input.idea, input.imageUrls, input.parentContext, input.username);
     }
 
     // Inject the "keep building on vibed.inc" badge into the app
-    injectVibedBadge(generatedApp.files);
+    injectVibedBadge(generatedApp!.files);
 
     // Deploy to Vercel
     const stepNum = input.backend === 'convex' ? '4️⃣' : '2️⃣';
     console.log(`\n${stepNum} Deploying to Vercel...`);
     const { url: vercelUrl, deploymentId } = await deployToVercel(
-      generatedApp.appName,
-      generatedApp.files
+      generatedApp!.appName,
+      generatedApp!.files
     );
 
     // GitHub repo + screenshot in parallel
@@ -62,9 +82,9 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
     console.log(`\n${stepNum2} Creating GitHub repo + waiting for deploy & taking screenshot...`);
     const [githubUrl, mediaIds] = await Promise.all([
       createGitHubRepo(
-        generatedApp.appName,
-        generatedApp.description,
-        generatedApp.files
+        generatedApp!.appName,
+        generatedApp!.description,
+        generatedApp!.files
       ),
       (async (): Promise<string[] | undefined> => {
         try {
