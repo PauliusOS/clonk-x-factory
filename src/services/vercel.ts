@@ -26,6 +26,7 @@ export async function deployToVercel(
       files: files.map((file) => ({
         file: file.path,
         data: file.content,
+        encoding: 'utf-8',
       })),
       projectSettings: {
         framework: 'vite',
