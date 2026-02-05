@@ -634,7 +634,7 @@ export async function generateConvexApp(
   console.log(`📋 Staging Convex template files to ${buildDir}/...`);
   stageTemplateToBuildDir('convex-react-vite', buildDir, convexDeploymentUrl);
 
-  const rawApp = await runClaudeQuery(prompt, makeConvexSystemPrompt(buildDir), buildDir, 15);
+  const rawApp = await runClaudeQuery(prompt, makeConvexSystemPrompt(buildDir), buildDir, 30);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'convex-react-vite', convexDeploymentUrl);
