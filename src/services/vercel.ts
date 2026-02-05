@@ -19,27 +19,34 @@ export async function deployToVercel(
 
   console.log(`🚀 Deploying ${projectName} to Vercel...`);
 
-  const deployment = await axios.post(
-    `${VERCEL_API}/v13/deployments`,
-    {
-      name: projectName,
-      files: files.map((file) => ({
-        file: file.path,
-        data: file.content,
-        encoding: 'utf-8',
-      })),
-      projectSettings: {
-        framework: 'vite',
+  let deployment;
+  try {
+    deployment = await axios.post(
+      `${VERCEL_API}/v13/deployments`,
+      {
+        name: projectName,
+        files: files.map((file) => ({
+          file: file.path,
+          data: file.content,
+          encoding: 'utf-8',
+        })),
+        projectSettings: {
+          framework: 'vite',
+        },
+        target: 'production',
       },
-      target: 'production',
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${VERCEL_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
+      {
+        headers: {
+          Authorization: `Bearer ${VERCEL_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+  } catch (err: any) {
+    const errorBody = err.response?.data;
+    console.error(`❌ Vercel API error:`, JSON.stringify(errorBody, null, 2));
+    throw err;
+  }
 
   // Use the clean project URL (accessible without Vercel auth)
   const deploymentUrl = `https://${projectName}.vercel.app`;
