@@ -78,6 +78,24 @@ export async function waitForDeployment(
       return;
     }
     if (state === 'ERROR' || state === 'CANCELED') {
+      // Log full deployment data for debugging
+      console.error(`❌ Deployment failed. Full state:`, JSON.stringify(res.data, null, 2));
+
+      // Try to fetch build logs for more detail
+      try {
+        const logsRes = await axios.get(
+          `${VERCEL_API}/v2/deployments/${deploymentId}/events`,
+          { headers: { Authorization: `Bearer ${VERCEL_TOKEN}` } }
+        );
+        const events = logsRes.data?.events || [];
+        const errorEvents = events.filter((e: any) => e.type === 'error' || e.text?.includes('error') || e.text?.includes('Error'));
+        if (errorEvents.length > 0) {
+          console.error(`❌ Build errors:`, errorEvents.map((e: any) => e.text).join('\n'));
+        }
+      } catch {
+        // Ignore errors fetching logs
+      }
+
       throw new Error(`Deployment failed with state: ${state}`);
     }
 

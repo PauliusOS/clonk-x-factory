@@ -43,6 +43,7 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
           input.imageUrls,
           input.parentContext,
           input.username,
+          input.template === 'threejs', // Pass 3D flag so Claude adds Three.js
         );
 
         const buildDir = generatedApp.buildDir!;

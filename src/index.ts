@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import { processTweetToApp } from './pipeline';
-import { classifyTweet } from './services/classify';
+import { classifyTweet, moderateContent } from './services/classify';
 
 dotenv.config();
 
@@ -110,8 +110,9 @@ async function pollMentions() {
 
       // Detect if the app needs a backend (Convex)
       // Triggers: mentions "convex", or describes needing a backend/database/auth/login/real-time
+      // Note: Convex can be combined with ThreeJS - we prioritize Convex template and add Three.js packages
       const BACKEND_KEYWORDS = ['convex', 'backend', 'database', 'real-time', 'realtime', 'login', 'sign in', 'signup', 'sign up', 'auth', 'users', 'accounts'];
-      const wantsConvex = !wantsThreeJs && BACKEND_KEYWORDS.some(kw => tweetLower.includes(kw));
+      const wantsConvex = BACKEND_KEYWORDS.some(kw => tweetLower.includes(kw));
 
       // Extract idea (remove @mentions, trigger keywords, and @convex tag)
       const idea = tweet.text
@@ -164,6 +165,14 @@ async function pollMentions() {
         continue;
       }
       console.log('🤖 AI classification: confirmed build request, proceeding');
+
+      // Content moderation — reject harmful/adversarial prompts before they hit the expensive pipeline
+      const isSafe = await moderateContent(idea, parentContext?.text);
+      if (!isSafe) {
+        console.log('🛡️ Content moderation: UNSAFE content detected, skipping');
+        continue;
+      }
+      console.log('🛡️ Content moderation: content is safe, proceeding');
 
       console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
 

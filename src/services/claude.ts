@@ -78,7 +78,31 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 ${FRONTEND_SKILL}`;
 }
 
-function makeConvexSystemPrompt(buildDir: string): string {
+function makeConvexSystemPrompt(buildDir: string, use3D?: boolean): string {
+  const threeJsSection = use3D ? `
+
+## Three.js / React Three Fiber (3D Apps)
+
+This app requires 3D graphics. Install and use Three.js via React Three Fiber:
+
+\`\`\`bash
+cd ${buildDir} && npm install three @react-three/fiber @react-three/drei @types/three
+\`\`\`
+
+Use React Three Fiber (R3F) for all 3D rendering:
+- \`import { Canvas } from '@react-three/fiber'\`
+- \`import { OrbitControls, Environment } from '@react-three/drei'\`
+
+Key patterns:
+- Wrap 3D content in \`<Canvas>\` component
+- Use \`OrbitControls\` for interactive camera
+- Use \`Environment\` for lighting presets
+- Use \`useFrame\` hook for animations
+- Drei provides helpers: Text, Float, Stars, Sky, Html, etc.
+
+Make the 3D canvas responsive and mobile-friendly with touch controls.
+` : '';
+
   return `You are an expert full-stack developer. Generate the creative source files AND Convex backend functions for a web application based on the user's request.
 
 Infrastructure files are pre-staged at ${buildDir}/ — do NOT recreate them. Specifically do NOT create:
@@ -127,7 +151,7 @@ BUILD VERIFICATION — you MUST do this before returning your final answer:
 ## Convex Backend Guidelines
 
 ${CONVEX_SKILL}
-
+${threeJsSection}
 ## Design Guidelines
 
 ${FRONTEND_SKILL}`;
@@ -389,8 +413,8 @@ function readCreativeFilesFromDisk(buildDir: string): { path: string; content: s
         const fullPath = path.join(currentDir, entry.name);
         const relativePath = `${prefix}/${entry.name}`;
         if (entry.isDirectory()) {
-          // Skip _generated dirs (Convex auto-generated)
-          if (entry.name === '_generated' || entry.name === 'node_modules') continue;
+          // Skip node_modules; _generated is kept (needed when Claude manually adds Convex to non-Convex templates)
+          if (entry.name === 'node_modules') continue;
           walk(fullPath, relativePath);
         } else {
           files.push({ path: relativePath, content: fs.readFileSync(fullPath, 'utf-8') });
@@ -426,6 +450,8 @@ async function runClaudeQuery(
   const MAX_CONSECUTIVE_ERRORS = 5;
 
   let turnCount = 0;
+  let consecutiveRefusals = 0;
+  const MAX_CONSECUTIVE_REFUSALS = 3;
 
   try {
   for await (const message of query({
@@ -467,6 +493,32 @@ async function runClaudeQuery(
         .slice(0, 200);
       if (text) {
         console.log(`  🤖 [turn ${turnCount}/${maxTurns}] ${text}${text.length >= 200 ? '...' : ''}`);
+      }
+
+      // Detect refusal patterns — if Claude is refusing to build, bail early
+      const fullText = msg.message?.content
+        ?.filter((b: any) => b.type === 'text')
+        .map((b: any) => b.text)
+        .join('') || '';
+      const hasToolUse = msg.message?.content?.some((b: any) => b.type === 'tool_use');
+      const REFUSAL_PATTERNS = [
+        /\brefus(e|al|ing)\b/i,
+        /\bwill not\b/i,
+        /\bcannot\b/i,
+        /\bi can'?t\b/i,
+        /\bethical\b/i,
+        /\binappropriate\b/i,
+        /\bharmful\b/i,
+        /\bunable to (create|build|generate|make)\b/i,
+      ];
+      const isRefusal = !hasToolUse && REFUSAL_PATTERNS.some(p => p.test(fullText));
+      if (isRefusal) {
+        consecutiveRefusals++;
+        if (consecutiveRefusals >= MAX_CONSECUTIVE_REFUSALS) {
+          throw new Error(`Content refused by Claude (${consecutiveRefusals} consecutive refusals). The request likely violates content policy.`);
+        }
+      } else {
+        consecutiveRefusals = 0;
       }
 
       // Log tool use summaries
@@ -615,8 +667,9 @@ export async function generateConvexApp(
   imageUrls?: string[],
   parentContext?: { text: string; imageUrls: string[] },
   username?: string,
+  use3D?: boolean,
 ): Promise<GeneratedApp> {
-  console.log(`🤖 Generating Convex app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
+  console.log(`🤖 Generating Convex app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}${use3D ? ' (with Three.js 3D)' : ''}`);
 
   const promptParts: string[] = [];
   if (parentContext) {
@@ -634,7 +687,7 @@ export async function generateConvexApp(
   console.log(`📋 Staging Convex template files to ${buildDir}/...`);
   stageTemplateToBuildDir('convex-react-vite', buildDir, convexDeploymentUrl);
 
-  const rawApp = await runClaudeQuery(prompt, makeConvexSystemPrompt(buildDir), buildDir, 30);
+  const rawApp = await runClaudeQuery(prompt, makeConvexSystemPrompt(buildDir, use3D), buildDir, 30);
   console.log(`🎨 Claude generated ${rawApp.files.length} creative files for "${rawApp.appName}"`);
 
   const mergedApp = mergeWithTemplate(rawApp, 'convex-react-vite', convexDeploymentUrl);
