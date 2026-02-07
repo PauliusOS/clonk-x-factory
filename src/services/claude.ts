@@ -208,6 +208,65 @@ function App() {
 - \`ContactShadows\`, \`AccumulativeShadows\`, \`SoftShadows\` — shadow systems
 - \`Center\` — center group of objects
 
+## 3D Model Assets from Poly.Pizza
+
+When the user's request involves recognizable real-world objects (cars, trees, buildings,
+characters, animals, furniture, weapons, food, etc.), search poly.pizza for ready-made
+low-poly 3D models instead of building them from scratch with primitive geometry.
+
+**When to use poly.pizza:**
+- User asks for a game/scene with specific objects (racing game → search "car", "road")
+- Scene needs environmental detail (trees, rocks, buildings, furniture)
+- Characters or animals are needed
+
+**When NOT to use poly.pizza (use procedural geometry instead):**
+- Abstract/geometric art, particle effects, mathematical visualizations
+- Simple shapes that are faster to code than to load (cubes, spheres)
+- The API key is not available
+
+**How to search (build-time only — use Bash tool):**
+\`\`\`bash
+curl -s -H "X-Auth-Token: $POLY_PIZZA_API_KEY" \\
+  "https://api.poly.pizza/v1.1/search/car" | head -c 2000
+\`\`\`
+
+Response contains \`results[]\` with each model having:
+- \`Download\` — direct GLB URL (use this with useGLTF)
+- \`Title\` — model name
+- \`Attribution\` — credit text (MUST include in app)
+- \`Licence\` — "CC0" (no attribution needed) or "CC-BY" (attribution required)
+- \`TriCount\` — triangle count (prefer lower for performance, under 50k)
+
+**How to load in React Three Fiber:**
+\`\`\`tsx
+import { useGLTF } from '@react-three/drei'
+import { Suspense } from 'react'
+
+function CarModel(props: JSX.IntrinsicElements['group']) {
+  const { scene } = useGLTF('https://...the-download-url...')
+  return <primitive object={scene.clone()} {...props} />
+}
+
+// Preload for better UX
+useGLTF.preload('https://...the-download-url...')
+
+// Always wrap in Suspense
+<Suspense fallback={null}>
+  <CarModel position={[0, 0, 0]} scale={1} />
+</Suspense>
+\`\`\`
+
+**Important rules:**
+1. Search the API FIRST, then embed the Download URL directly in code — do NOT make API calls at runtime
+2. Always wrap model components in \`<Suspense>\` with a fallback
+3. Use \`scene.clone()\` when placing the same model multiple times
+4. Adjust scale — poly.pizza models vary in size, you may need \`scale={0.5}\` or \`scale={2}\`
+5. For CC-BY models, include attribution in the app footer (add to the existing footer text)
+6. Prefer models with lower TriCount for better performance
+7. If $POLY_PIZZA_API_KEY is not set or the search returns no results, fall back to procedural geometry
+8. Search with simple, specific keywords: "car", "tree", "house" — not long phrases
+9. You can search multiple times for different objects in the same scene
+
 **Animation with useFrame:**
 \`\`\`tsx
 import { useFrame } from '@react-three/fiber'
@@ -246,7 +305,7 @@ function SpinningBox() {
 - Add proper lighting (ambient + directional/point lights)
 - Make objects interactive where it makes sense (hover effects, click handlers)
 - Use Drei helpers to make the scene visually rich (environment maps, shadows, atmospheric effects)
-- Client-side only SPA, no backend/API calls
+- Client-side only SPA — the generated app must NOT call any backend APIs at runtime (loading static assets like GLB models from CDN URLs is fine)
 - All TypeScript must compile cleanly
 - You can add a Tailwind-styled UI overlay (HUD, controls panel, info cards) on top of the 3D canvas using absolute positioning or Drei's Html component
 - Mobile-friendly: ensure touch controls work for orbit/zoom, and any UI overlays are usable on small screens
@@ -718,6 +777,11 @@ export async function generateThreeJsApp(
   const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
   promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size). Use absolute positioning or an overlay so it doesn't interfere with the 3D canvas.`);
   promptParts.push('Use /frontend-design and follow the Design Guidelines to make any UI chrome visually stunning and distinctive.');
+
+  // Nudge Claude to search for 3D assets when relevant
+  if (process.env.POLY_PIZZA_API_KEY) {
+    promptParts.push(`If this scene would benefit from realistic 3D models (vehicles, characters, buildings, nature, etc.), search poly.pizza for suitable assets using the API instructions in your system prompt.`);
+  }
 
   const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
 
