@@ -98,9 +98,49 @@ Key patterns:
 - Use \`OrbitControls\` for interactive camera
 - Use \`Environment\` for lighting presets
 - Use \`useFrame\` hook for animations
-- Drei provides helpers: Text, Float, Stars, Sky, Html, etc.
+- Drei provides helpers: Text, Float, Stars, Sky, Html, useGLTF, etc.
 
 Make the 3D canvas responsive and mobile-friendly with touch controls.
+
+### 3D Model Assets from Poly.Pizza
+
+When the scene involves recognizable real-world objects (cars, trees, buildings, characters,
+animals, furniture, weapons, food, etc.), search poly.pizza for ready-made low-poly 3D models
+instead of building them from scratch with primitive geometry.
+
+**How to search (build-time only — use Bash tool):**
+\`\`\`bash
+curl -s -H "X-Auth-Token: $POLY_PIZZA_API_KEY" \\
+  "https://api.poly.pizza/v1.1/search/car" | head -c 2000
+\`\`\`
+
+Response contains \`results[]\` with each model having:
+- \`Download\` — direct GLB URL (use this with useGLTF)
+- \`Title\` — model name
+- \`Attribution\` — credit text (MUST include in app)
+- \`Licence\` — "CC0" or "CC-BY" (attribution required)
+- \`TriCount\` — triangle count (prefer under 50k)
+
+**How to load in React Three Fiber:**
+\`\`\`tsx
+import { useGLTF } from '@react-three/drei'
+
+function CarModel(props: JSX.IntrinsicElements['group']) {
+  const { scene } = useGLTF('https://...the-download-url...')
+  return <primitive object={scene.clone()} {...props} />
+}
+useGLTF.preload('https://...the-download-url...')
+\`\`\`
+
+**Rules:**
+1. Search the API FIRST, then embed the Download URL directly in code — do NOT make API calls at runtime
+2. Always wrap model components in \`<Suspense>\` with a fallback
+3. Use \`scene.clone()\` when placing the same model multiple times
+4. Adjust scale — poly.pizza models vary in size
+5. For CC-BY models, include attribution in the app footer
+6. Prefer models with lower TriCount for better performance
+7. If $POLY_PIZZA_API_KEY is not set or search returns no results, fall back to procedural geometry
+8. Search with simple keywords: "car", "tree", "house"
 ` : '';
 
   return `You are an expert full-stack developer. Generate the creative source files AND Convex backend functions for a web application based on the user's request.
@@ -739,6 +779,11 @@ export async function generateConvexApp(
   const footer = `Requested by @${username || 'unknown'} · Built by @clonkbot`;
   promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
   promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');
+
+  // Nudge Claude to search for 3D assets when relevant (Convex + 3D apps)
+  if (use3D && process.env.POLY_PIZZA_API_KEY) {
+    promptParts.push(`If this scene would benefit from realistic 3D models (vehicles, characters, buildings, nature, etc.), search poly.pizza for suitable assets using the API instructions in your system prompt.`);
+  }
 
   const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
 
