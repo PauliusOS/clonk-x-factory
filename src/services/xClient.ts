@@ -24,7 +24,7 @@ function getCredentials() {
   return { accessToken, accessTokenSecret, apiKey, apiSecret };
 }
 
-function generateOAuthHeader(method: string, url: string): string {
+function generateOAuthHeader(method: string, url: string, queryParams?: Record<string, string>): string {
   const { accessToken, accessTokenSecret, apiKey, apiSecret } = getCredentials();
 
   const oauth: Record<string, string> = {
@@ -36,10 +36,12 @@ function generateOAuthHeader(method: string, url: string): string {
     oauth_version: '1.0',
   };
 
-  // Create signature base string (only OAuth params, no body params for JSON/multipart)
-  const paramString = Object.keys(oauth)
+  // For GET requests, query params must be included in the signature base string
+  const allParams: Record<string, string> = { ...oauth, ...queryParams };
+
+  const paramString = Object.keys(allParams)
     .sort()
-    .map((key) => `${key}=${encodeURIComponent(oauth[key])}`)
+    .map((key) => `${key}=${encodeURIComponent(allParams[key])}`)
     .join('&');
 
   const signatureBase = `${method}&${encodeURIComponent(url)}&${encodeURIComponent(paramString)}`;
@@ -132,4 +134,29 @@ export async function replyToTweet(
   );
 
   console.log(`✅ Replied to tweet: ${response.data.data.id}`);
+}
+
+export async function fetchMentions(botUserId: string, sinceId?: string): Promise<any> {
+  const url = `${X_API_BASE}/users/${botUserId}/mentions`;
+
+  const params: Record<string, string> = {
+    max_results: '10',
+    'tweet.fields': 'author_id,created_at,attachments,referenced_tweets',
+    'media.fields': 'url,preview_image_url,type',
+    'user.fields': 'username',
+    expansions: 'author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.attachments.media_keys',
+  };
+
+  if (sinceId) {
+    params.since_id = sinceId;
+  }
+
+  const authHeader = generateOAuthHeader('GET', url, params);
+
+  const response = await axios.get(url, {
+    headers: { Authorization: authHeader },
+    params,
+  });
+
+  return response.data;
 }

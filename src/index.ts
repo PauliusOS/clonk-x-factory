@@ -1,8 +1,8 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import axios from 'axios';
 import { processTweetToApp } from './pipeline';
 import { classifyTweet, moderateContent } from './services/classify';
+import { fetchMentions } from './services/xClient';
 
 dotenv.config();
 
@@ -30,40 +30,19 @@ const POLL_INTERVAL_MS = 2 * 60 * 1000;
 
 async function pollMentions() {
   try {
-    const bearerToken = process.env.X_BEARER_TOKEN;
     const botUserId = process.env.X_BOT_USER_ID;
 
-    if (!bearerToken || !botUserId) {
-      console.error('Missing X_BEARER_TOKEN or X_BOT_USER_ID');
+    if (!botUserId) {
+      console.error('Missing X_BOT_USER_ID');
       return;
     }
 
-    const params: Record<string, string> = {
-      max_results: '10',
-      'tweet.fields': 'author_id,created_at,attachments,referenced_tweets',
-      'media.fields': 'url,preview_image_url,type',
-      'user.fields': 'username',
-      expansions: 'author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.attachments.media_keys',
-    };
+    const data = await fetchMentions(botUserId, lastSeenTweetId || undefined);
 
-    if (lastSeenTweetId) {
-      params.since_id = lastSeenTweetId;
-    }
-
-    const response = await axios.get(
-      `https://api.x.com/2/users/${botUserId}/mentions`,
-      {
-        headers: {
-          Authorization: `Bearer ${bearerToken}`,
-        },
-        params,
-      }
-    );
-
-    const tweets = response.data.data || [];
-    const users = response.data.includes?.users || [];
-    const media = response.data.includes?.media || [];
-    const includedTweets = response.data.includes?.tweets || [];
+    const tweets = data.data || [];
+    const users = data.includes?.users || [];
+    const media = data.includes?.media || [];
+    const includedTweets = data.includes?.tweets || [];
 
     if (tweets.length === 0) {
       return;
