@@ -93,6 +93,10 @@ async function pollMentions() {
       const BACKEND_KEYWORDS = ['convex', 'backend', 'database', 'real-time', 'realtime', 'login', 'sign in', 'signup', 'sign up', 'auth', 'users', 'accounts'];
       const wantsConvex = BACKEND_KEYWORDS.some(kw => tweetLower.includes(kw));
 
+      // Detect if user wants a token/coin deployed via @bankrbot
+      const TOKEN_KEYWORDS = ['coin', 'token', 'memecoin', 'meme coin', 'crypto', 'launch token', 'deploy token'];
+      const wantsToken = TOKEN_KEYWORDS.some(kw => tweetLower.includes(kw));
+
       // Extract idea (remove @mentions, trigger keywords, and @convex tag)
       const idea = tweet.text
         .replace(/@\w+/g, '')
@@ -153,7 +157,7 @@ async function pollMentions() {
       }
       console.log('🛡️ Content moderation: content is safe, proceeding');
 
-      console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
+      console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}${wantsToken ? ' (token via @bankrbot)' : ''}`);
 
       // Mark as processing
       processingTweets.add(tweet.id);
@@ -168,6 +172,7 @@ async function pollMentions() {
         parentContext,
         backend: wantsConvex ? 'convex' : undefined,
         template: wantsThreeJs ? 'threejs' : undefined,
+        token: wantsToken ? 'bankr' : undefined,
       })
         .catch((error: any) => {
           console.error('Pipeline error:', error.message || error);

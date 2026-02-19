@@ -12,6 +12,7 @@ export interface GeneratedApp {
   appName: string;
   description: string;
   buildDir?: string; // Unique build dir path (needed for Convex deploy step)
+  tokenSymbol?: string; // Suggested token ticker symbol (when user requests a coin)
 }
 
 // Raw output from Claude — metadata only (files are read from disk)
@@ -21,6 +22,7 @@ interface RawGeneratedApp {
   title: string;
   fonts: string[];
   extraDependencies?: Record<string, string>;
+  tokenSymbol?: string;
 }
 
 export type TemplateName = 'react-vite' | 'convex-react-vite' | 'threejs-react-vite';
@@ -382,6 +384,10 @@ const OUTPUT_SCHEMA = {
       additionalProperties: { type: 'string' },
       description: 'Additional npm dependencies beyond what the template provides. Only include if actually needed.',
     },
+    tokenSymbol: {
+      type: 'string',
+      description: 'Suggested 3-5 character token ticker symbol (e.g. "MEMED", "POMO"). Only include if the user explicitly requested a coin, token, or memecoin alongside their app.',
+    },
   },
   required: ['appName', 'description', 'title', 'fonts'],
 };
@@ -490,6 +496,7 @@ function mergeWithTemplate(raw: RawGeneratedApp & { files: { path: string; conte
     appName: raw.appName,
     description: raw.description,
     files: mergedFiles,
+    tokenSymbol: raw.tokenSymbol,
   };
 }
 

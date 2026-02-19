@@ -15,6 +15,7 @@ export interface PipelineInput {
   parentContext?: { text: string; imageUrls: string[] };
   backend?: 'convex';
   template?: 'threejs';
+  token?: 'bankr';
 }
 
 export async function processTweetToApp(input: PipelineInput): Promise<void> {
@@ -112,7 +113,19 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
     const stepNum3 = input.backend === 'convex' ? '6️⃣' : '4️⃣';
     console.log(`\n${stepNum3} Replying to tweet...`);
     const backendNote = input.backend === 'convex' ? '\n⚡ Powered by Convex (real-time backend)' : '';
-    const replyText = `✅ App live: ${vercelUrl}${backendNote}\n- Continue this in the @getkomand Mac app\n📝 Contribute: ${githubUrl}\n\nFork it, improve it, ship it together 🚀`;
+
+    // If user requested a token, tag @bankrbot to deploy it with fees routed to the user
+    let tokenCommand = '';
+    if (input.token === 'bankr') {
+      const symbol = generatedApp!.tokenSymbol
+        || generatedApp!.appName.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase();
+      // Human-readable name from appName (kebab-case → Title Case)
+      const tokenName = generatedApp!.appName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      tokenCommand = `\n\n@bankrbot deploy ${tokenName} symbol ${symbol} on Base fees to @${input.username}`;
+      console.log(`🪙 Including @bankrbot token deploy command: ${tokenCommand.trim()}`);
+    }
+
+    const replyText = `✅ App live: ${vercelUrl}${backendNote}\n📝 Contribute: ${githubUrl}${tokenCommand}`;
 
     await replyToTweet(input.tweetId, replyText, mediaIds);
 
