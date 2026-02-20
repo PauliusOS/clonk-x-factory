@@ -5,6 +5,7 @@ import { replyToTweet, uploadMedia } from './services/xClient';
 import { takeScreenshot } from './services/screenshot';
 import { injectVibedBadge } from './services/badge';
 import { createConvexProject, configureConvexAuthKeys, deployConvexBackend } from './services/convex';
+import { publishToClonkSite } from './services/clonkSite';
 
 export interface PipelineInput {
   idea: string;
@@ -15,7 +16,6 @@ export interface PipelineInput {
   parentContext?: { text: string; imageUrls: string[] };
   backend?: 'convex';
   template?: 'threejs';
-  token?: 'bankr';
 }
 
 export async function processTweetToApp(input: PipelineInput): Promise<void> {
@@ -100,32 +100,43 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
 
     // Screenshot (non-fatal — don't block the reply if this fails)
     let mediaIds: string[] | undefined;
+    let screenshotBuffer: Buffer | undefined;
     try {
-      const screenshot = await takeScreenshot(vercelUrl);
-      const mediaId = await uploadMedia(screenshot);
+      screenshotBuffer = await takeScreenshot(vercelUrl);
+      const mediaId = await uploadMedia(screenshotBuffer);
       mediaIds = [mediaId];
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`⚠️ Screenshot failed (non-fatal): ${msg}`);
     }
 
+    // Publish to clonk.ai gallery (non-fatal)
+    let clonkPageUrl: string | null = null;
+    try {
+      clonkPageUrl = await publishToClonkSite({
+        appName: generatedApp!.appName,
+        description: generatedApp!.description,
+        vercelUrl,
+        githubUrl,
+        username: input.username,
+        template: input.template === 'threejs' ? 'threejs' : (input.backend === 'convex' ? 'convex' : 'react'),
+        screenshot: screenshotBuffer,
+      });
+      if (clonkPageUrl) {
+        console.log(`🌐 Published to clonk.ai: ${clonkPageUrl}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.warn(`⚠️ Clonk site publish failed (non-fatal): ${msg}`);
+    }
+
     // Reply with links + optional screenshot
     const stepNum3 = input.backend === 'convex' ? '6️⃣' : '4️⃣';
     console.log(`\n${stepNum3} Replying to tweet...`);
     const backendNote = input.backend === 'convex' ? '\n⚡ Powered by Convex (real-time backend)' : '';
+    const clonkLink = clonkPageUrl ? `\n🌐 ${clonkPageUrl}` : '';
 
-    // If user requested a token, tag @bankrbot to deploy it with fees routed to the user
-    let tokenCommand = '';
-    if (input.token === 'bankr') {
-      const symbol = generatedApp!.tokenSymbol
-        || generatedApp!.appName.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase();
-      // Human-readable name from appName (kebab-case → Title Case)
-      const tokenName = generatedApp!.appName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      tokenCommand = `\n\n@bankrbot deploy ${tokenName} symbol ${symbol} on Base fees to @${input.username}`;
-      console.log(`🪙 Including @bankrbot token deploy command: ${tokenCommand.trim()}`);
-    }
-
-    const replyText = `✅ App live: ${vercelUrl}${backendNote}\n📝 Contribute: ${githubUrl}${tokenCommand}`;
+    const replyText = `✅ App live: ${vercelUrl}${backendNote}${clonkLink}\n📝 Contribute: ${githubUrl}`;
 
     await replyToTweet(input.tweetId, replyText, mediaIds);
 
