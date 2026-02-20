@@ -1,3 +1,4 @@
+// Publishes deployed app entries to the clonk.ai gallery via Convex HTTP action
 interface AppEntry {
   appName: string;
   description: string;
