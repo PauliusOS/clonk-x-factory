@@ -13,9 +13,10 @@ export async function publishToClonkSite(entry: AppEntry): Promise<string | null
   const apiUrl = process.env.CLONK_SITE_API_URL;
   const apiKey = process.env.CLONK_SITE_API_KEY;
   if (!apiUrl || !apiKey) {
-    console.log('⏭️ Skipping clonk.ai publish (CLONK_SITE_API_URL or CLONK_SITE_API_KEY not set)');
+    console.log(`⏭️ Skipping clonk.ai publish (CLONK_SITE_API_URL=${apiUrl ? 'set' : 'missing'}, CLONK_SITE_API_KEY=${apiKey ? 'set' : 'missing'})`);
     return null;
   }
+  console.log(`📡 Publishing to clonk.ai: ${apiUrl}/api/publish`);
 
   const params = new URLSearchParams({
     appName: entry.appName,
