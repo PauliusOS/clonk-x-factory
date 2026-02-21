@@ -133,7 +133,24 @@ function makeTelegramProgress(
 
 interface DownloadedImage {
   data: Buffer;
-  mediaType: string;
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+}
+
+/** Normalize a content-type to one of Claude's allowed image types */
+function normalizeMediaType(contentType: string, filePath?: string): DownloadedImage['mediaType'] {
+  const ct = contentType.split(';')[0].trim().toLowerCase();
+  if (ct === 'image/png') return 'image/png';
+  if (ct === 'image/gif') return 'image/gif';
+  if (ct === 'image/webp') return 'image/webp';
+  if (ct === 'image/jpeg' || ct === 'image/jpg') return 'image/jpeg';
+
+  // Fallback: guess from file extension
+  if (filePath) {
+    if (filePath.endsWith('.png')) return 'image/png';
+    if (filePath.endsWith('.gif')) return 'image/gif';
+    if (filePath.endsWith('.webp')) return 'image/webp';
+  }
+  return 'image/jpeg'; // safe default — Telegram photos are almost always JPEG
 }
 
 /**
@@ -153,8 +170,7 @@ async function downloadTelegramPhotos(ctx: Context): Promise<DownloadedImage[]> 
       const token = process.env.TELEGRAM_BOT_TOKEN!;
       const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
       const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
-      const contentType = response.headers['content-type'] || 'image/jpeg';
-      const mediaType = contentType.split(';')[0].trim();
+      const mediaType = normalizeMediaType(response.headers['content-type'] || '', file.file_path);
       return [{ data: Buffer.from(response.data), mediaType }];
     }
   } catch (err) {
@@ -177,8 +193,7 @@ async function downloadParentPhotos(ctx: Context): Promise<DownloadedImage[]> {
       const token = process.env.TELEGRAM_BOT_TOKEN!;
       const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
       const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
-      const contentType = response.headers['content-type'] || 'image/jpeg';
-      const mediaType = contentType.split(';')[0].trim();
+      const mediaType = normalizeMediaType(response.headers['content-type'] || '', file.file_path);
       return [{ data: Buffer.from(response.data), mediaType }];
     }
   } catch (err) {
