@@ -245,8 +245,11 @@ export function createTelegramBot(
 
 /**
  * Mount the Telegram bot on an Express app using webhooks.
- * The webhook path uses the bot token as a secret path component
- * (recommended by Telegram docs to prevent spoofed updates).
+ *
+ * Security: uses Telegram's official `secret_token` parameter on `setWebhook`.
+ * Telegram sends this back as an `X-Telegram-Bot-Api-Secret-Token` header on
+ * every webhook request, and grammY's `webhookCallback` verifies it automatically.
+ * This is the Telegram-recommended approach to prevent spoofed updates.
  *
  * If WEBHOOK_URL is set, registers the webhook with Telegram and uses
  * Express to receive updates. Otherwise falls back to long-polling.
@@ -259,15 +262,19 @@ export async function startTelegramBot(
   const token = process.env.TELEGRAM_BOT_TOKEN!;
 
   if (webhookUrl) {
-    // Webhook mode — mount on Express, register with Telegram
-    // Use a SHA-256 hash of the token as the secret path (the raw token contains
-    // a colon which Telegram rejects in webhook URLs)
-    const secretPath = crypto.createHash('sha256').update(token).digest('hex');
-    expressApp.use(`/telegram/${secretPath}`, webhookCallback(bot, 'express'));
+    // Generate a secret token for webhook verification (1-256 chars, A-Za-z0-9_-)
+    const secretToken = crypto.createHash('sha256').update(token).digest('hex');
 
-    const fullUrl = `${webhookUrl}/telegram/${secretPath}`;
-    await bot.api.setWebhook(fullUrl);
-    console.log(`📱 Telegram bot webhook registered: ${webhookUrl}/telegram/<secret>`);
+    // Mount webhook handler on a simple path — security comes from the secret_token
+    // header verification, not from an unguessable URL path
+    expressApp.use(
+      '/webhooks/telegram',
+      webhookCallback(bot, 'express', { secretToken }),
+    );
+
+    const fullUrl = `${webhookUrl}/webhooks/telegram`;
+    await bot.api.setWebhook(fullUrl, { secret_token: secretToken });
+    console.log(`📱 Telegram bot webhook registered: ${fullUrl}`);
   } else {
     // Fallback: long-polling (for local dev or when no public URL)
     // Delete any previously set webhook first
