@@ -341,10 +341,10 @@ export function createTelegramBot(
 
     console.log(`\n📱 Telegram photo+caption from @${username}: ${caption}`);
 
-    const isAppRequest = await classifyTweet(caption);
+    const isAppRequest = await classifyTweet(caption, undefined, true);
     if (!isAppRequest) return;
 
-    const isSafe = await moderateContent(idea);
+    const isSafe = await moderateContent(idea, undefined, true);
     if (!isSafe) return;
 
     const imageUrls = await extractTelegramPhotos(ctx);

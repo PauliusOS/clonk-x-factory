@@ -53,11 +53,15 @@ Examples:
 export async function classifyTweet(
   tweetText: string,
   parentText?: string,
+  hasImages?: boolean,
 ): Promise<boolean> {
   const contextParts: string[] = [];
 
   if (parentText) {
     contextParts.push(`Parent tweet: "${parentText}"`);
+  }
+  if (hasImages) {
+    contextParts.push('(The message includes attached image(s) which may show a screenshot, mockup, or design reference.)');
   }
   contextParts.push(`Tweet: "${tweetText}"`);
   contextParts.push(
@@ -105,11 +109,15 @@ export async function classifyTweet(
 export async function moderateContent(
   idea: string,
   parentText?: string,
+  hasImages?: boolean,
 ): Promise<boolean> {
   const contextParts: string[] = [];
 
   if (parentText) {
     contextParts.push(`Parent tweet context: "${parentText}"`);
+  }
+  if (hasImages) {
+    contextParts.push('(The message includes attached image(s) showing a screenshot, mockup, or design reference. References like "this" or "like this" refer to the attached image.)');
   }
   contextParts.push(`App request: "${idea}"`);
   contextParts.push(
