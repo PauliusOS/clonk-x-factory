@@ -1,4 +1,5 @@
 import { Bot, InputFile, InlineKeyboard, Context, webhookCallback } from 'grammy';
+import crypto from 'crypto';
 import type { Express } from 'express';
 import { classifyTweet, moderateContent } from '../services/classify';
 import type { PipelineInput } from '../pipeline';
@@ -259,7 +260,9 @@ export async function startTelegramBot(
 
   if (webhookUrl) {
     // Webhook mode — mount on Express, register with Telegram
-    const secretPath = token;
+    // Use a SHA-256 hash of the token as the secret path (the raw token contains
+    // a colon which Telegram rejects in webhook URLs)
+    const secretPath = crypto.createHash('sha256').update(token).digest('hex');
     expressApp.use(`/telegram/${secretPath}`, webhookCallback(bot, 'express'));
 
     const fullUrl = `${webhookUrl}/telegram/${secretPath}`;
