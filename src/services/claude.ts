@@ -3,6 +3,7 @@ import type { SDKResultSuccess } from '@anthropic-ai/claude-agent-sdk';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 
 export interface GeneratedApp {
   files: {
@@ -682,11 +683,29 @@ async function runClaudeQuery(
 // Build multimodal prompt from images + text
 // ---------------------------------------------------------------------------
 
-function buildPrompt(
+/**
+ * Download an image URL and return a base64-encoded image block for Claude.
+ * We download ourselves because some sources (e.g. Telegram file API) block
+ * Claude's URL fetcher via robots.txt.
+ */
+async function downloadImageAsBase64(url: string): Promise<{ type: 'image'; source: { type: 'base64'; media_type: string; data: string } } | null> {
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+    const mediaType = contentType.split(';')[0].trim();
+    const data = Buffer.from(response.data).toString('base64');
+    return { type: 'image', source: { type: 'base64', media_type: mediaType, data } };
+  } catch (err) {
+    console.warn(`Failed to download image ${url}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+async function buildPrompt(
   textPrompt: string,
   imageUrls?: string[],
   parentContext?: { text: string; imageUrls: string[] },
-): string | AsyncIterable<any> {
+): Promise<string | AsyncIterable<any>> {
   const hasImages = (imageUrls?.length ?? 0) > 0 || (parentContext?.imageUrls.length ?? 0) > 0;
 
   if (!hasImages) return textPrompt;
@@ -694,24 +713,34 @@ function buildPrompt(
   const contentBlocks: any[] = [];
 
   if (parentContext?.imageUrls.length) {
-    for (const url of parentContext.imageUrls) {
-      contentBlocks.push({ type: 'image', source: { type: 'url', url } });
+    const blocks = await Promise.all(parentContext.imageUrls.map(downloadImageAsBase64));
+    for (const block of blocks) {
+      if (block) contentBlocks.push(block);
     }
-    contentBlocks.push({
-      type: 'text',
-      text: 'The above image(s) were attached to the original post. Use them as visual reference for the app design.',
-    });
+    if (contentBlocks.length > 0) {
+      contentBlocks.push({
+        type: 'text',
+        text: 'The above image(s) were attached to the original post. Use them as visual reference for the app design.',
+      });
+    }
   }
 
   if (imageUrls?.length) {
-    for (const url of imageUrls) {
-      contentBlocks.push({ type: 'image', source: { type: 'url', url } });
+    const blocks = await Promise.all(imageUrls.map(downloadImageAsBase64));
+    const addedCount = blocks.filter(Boolean).length;
+    for (const block of blocks) {
+      if (block) contentBlocks.push(block);
     }
-    contentBlocks.push({
-      type: 'text',
-      text: 'The above image(s) were attached to the tweet. Use them as visual reference — they may be wireframes, mockups, screenshots, or inspiration images. Try to match the layout, colors, and style shown.',
-    });
+    if (addedCount > 0) {
+      contentBlocks.push({
+        type: 'text',
+        text: 'The above image(s) were attached to the message. Use them as visual reference — they may be wireframes, mockups, screenshots, or inspiration images. Try to match the layout, colors, and style shown.',
+      });
+    }
   }
+
+  // If all image downloads failed, fall back to plain text
+  if (contentBlocks.length === 0) return textPrompt;
 
   contentBlocks.push({ type: 'text', text: textPrompt });
 
@@ -745,7 +774,7 @@ export async function generateApp(
   promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
   promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');
 
-  const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
 
   const buildDir = createBuildDir();
   console.log(`📋 Staging template files to ${buildDir}/...`);
@@ -792,7 +821,7 @@ export async function generateConvexApp(
     promptParts.push(`If this scene would benefit from realistic 3D models (vehicles, characters, buildings, nature, etc.), search poly.pizza for suitable assets using the API instructions in your system prompt.`);
   }
 
-  const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
 
   const buildDir = createBuildDir();
   console.log(`📋 Staging Convex template files to ${buildDir}/...`);
@@ -835,7 +864,7 @@ export async function generateThreeJsApp(
     promptParts.push(`If this scene would benefit from realistic 3D models (vehicles, characters, buildings, nature, etc.), search poly.pizza for suitable assets using the API instructions in your system prompt.`);
   }
 
-  const prompt = buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
 
   const buildDir = createBuildDir();
   console.log(`📋 Staging Three.js template files to ${buildDir}/...`);
