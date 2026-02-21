@@ -6,6 +6,55 @@ import type { PipelineInput } from '../pipeline';
 
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'clonkrbot';
 
+// Curated list of fun cooking/building/crafting GIFs for acknowledgement messages.
+// Telegram fetches these directly — no external API key needed.
+const ACK_GIFS = [
+  'https://media.giphy.com/media/l0MYt5jPR6QX5APm0/giphy.gif',       // cooking fire
+  'https://media.giphy.com/media/3oEjHGr1Fhz0kyv8Ig/giphy.gif',      // chef cooking
+  'https://media.giphy.com/media/xT0xeMA62E1XIlqYb6/giphy.gif',      // building blocks
+  'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif',           // cat typing
+  'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.gif',      // coding
+  'https://media.giphy.com/media/13HgwGsXF0aiGY/giphy.gif',          // hacker typing
+  'https://media.giphy.com/media/du3J3cXyzhj75IOgvA/giphy.gif',      // lego building
+  'https://media.giphy.com/media/3knKct3fGqxhK/giphy.gif',           // science cooking
+  'https://media.giphy.com/media/snEeOh54kCFxe/giphy.gif',           // building machine
+  'https://media.giphy.com/media/iDJQRjTCenF7A4BRyU/giphy.gif',      // robot working
+];
+
+const ACK_MESSAGES = [
+  "🔧 On it! Cooking up your app...",
+  "⚡ Challenge accepted! Building now...",
+  "🚀 Let's go! Firing up the engines...",
+  "🧑‍🍳 Order received! Chef's in the kitchen...",
+  "🏗️ Hard hat on. Building your app...",
+  "🔨 Hammering away at your idea...",
+  "🧪 Mixing the ingredients...",
+  "⏳ Give me a minute, magic in progress...",
+];
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** Send an acknowledgement GIF + message so the user knows we're working on it */
+async function sendAcknowledgement(ctx: Context): Promise<void> {
+  try {
+    await ctx.replyWithAnimation(pickRandom(ACK_GIFS), {
+      caption: pickRandom(ACK_MESSAGES),
+      reply_parameters: { message_id: ctx.message!.message_id },
+    });
+  } catch (err) {
+    // Non-fatal — if the GIF fails, try a plain text ack
+    try {
+      await ctx.reply(pickRandom(ACK_MESSAGES), {
+        reply_parameters: { message_id: ctx.message!.message_id },
+      });
+    } catch {
+      // Truly non-fatal
+    }
+  }
+}
+
 /**
  * Extract the largest photo from a Telegram message as a downloadable URL.
  * Telegram sends multiple sizes — we take the biggest one.
@@ -35,35 +84,37 @@ async function extractTelegramPhotos(ctx: Context): Promise<string[]> {
  */
 function makeTelegramReply(ctx: Context): PipelineInput['reply'] {
   return async (text: string, screenshotBuffer?: Buffer) => {
-    // Build inline keyboard from URLs in the reply text
+    // Extract URLs to build "Open" and "Remix" buttons
     const keyboard = new InlineKeyboard();
     const urlMatches = text.match(/https?:\/\/[^\s]+/g) || [];
+    let hasButtons = false;
     for (const url of urlMatches) {
-      if (url.includes('vercel.app')) keyboard.url('Open App', url);
-      else if (url.includes('github.com')) keyboard.url('GitHub', url);
-      else if (url.includes('clonk.ai')) keyboard.url('Gallery', url);
+      if (url.includes('vercel.app')) { keyboard.url('▶️ Open', url); hasButtons = true; }
+      else if (url.includes('clonk.ai')) { keyboard.url('🔀 Remix', url); hasButtons = true; }
     }
 
-    // Clean text for Telegram (URLs are in buttons, keep the status lines)
+    // Clean text for Telegram (URLs are in buttons)
     const cleanText = text
       .replace(/https?:\/\/[^\s]+/g, '')
+      .replace(/📝 Contribute:/g, '')
       .replace(/\n{2,}/g, '\n')
       .trim();
 
     const replyParams = { message_id: ctx.message!.message_id };
+    const replyMarkup = hasButtons ? keyboard : undefined;
 
     if (screenshotBuffer) {
       // Photo caption max is 1024 chars
       const caption = cleanText.length > 1024 ? cleanText.slice(0, 1021) + '...' : cleanText;
       await ctx.replyWithPhoto(new InputFile(screenshotBuffer, 'screenshot.png'), {
-        caption: caption || 'App built!',
+        caption: caption || '✅ Your app is ready!',
         reply_parameters: replyParams,
-        reply_markup: urlMatches.length > 0 ? keyboard : undefined,
+        reply_markup: replyMarkup,
       });
     } else {
-      await ctx.reply(cleanText || text, {
+      await ctx.reply(cleanText || '✅ Your app is ready!', {
         reply_parameters: replyParams,
-        reply_markup: urlMatches.length > 0 ? keyboard : undefined,
+        reply_markup: replyMarkup,
       });
     }
   };
@@ -172,6 +223,9 @@ export function createTelegramBot(
 
     console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
 
+    // Acknowledge immediately so the user knows we're on it
+    await sendAcknowledgement(ctx);
+
     onMention({
       idea,
       messageId: String(ctx.message.message_id),
@@ -226,6 +280,9 @@ export function createTelegramBot(
 
     const BACKEND_KEYWORDS = ['convex', 'backend', 'database', 'real-time', 'realtime', 'login', 'sign in', 'signup', 'sign up', 'auth', 'users', 'accounts'];
     const wantsConvex = BACKEND_KEYWORDS.some(kw => captionLower.includes(kw));
+
+    // Acknowledge immediately
+    await sendAcknowledgement(ctx);
 
     onMention({
       idea,
