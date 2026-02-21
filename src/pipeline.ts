@@ -1,7 +1,6 @@
 import { generateApp, generateConvexApp, generateThreeJsApp } from './services/claude';
 import { deployToVercel, waitForDeployment } from './services/vercel';
 import { createGitHubRepo } from './services/github';
-import { replyToTweet, uploadMedia } from './services/xClient';
 import { takeScreenshot } from './services/screenshot';
 import { injectVibedBadge } from './services/badge';
 import { createConvexProject, configureConvexAuthKeys, deployConvexBackend } from './services/convex';
@@ -9,16 +8,19 @@ import { publishToClonkSite } from './services/clonkSite';
 
 export interface PipelineInput {
   idea: string;
-  tweetId: string;
+  messageId: string;
   userId: string;
   username: string;
+  source: 'x' | 'telegram';
   imageUrls?: string[];
   parentContext?: { text: string; imageUrls: string[] };
   backend?: 'convex';
   template?: 'threejs';
+  /** Channel-specific reply function — injected by the caller */
+  reply: (text: string, screenshotBuffer?: Buffer) => Promise<void>;
 }
 
-export async function processTweetToApp(input: PipelineInput): Promise<void> {
+export async function processMentionToApp(input: PipelineInput): Promise<void> {
   console.log(`\n🚀 Starting pipeline for: "${input.idea}"${input.template ? ` (template: ${input.template})` : ''}${input.backend ? ` (backend: ${input.backend})` : ''}\n`);
 
   try {
@@ -99,12 +101,9 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
     ]);
 
     // Screenshot (non-fatal — don't block the reply if this fails)
-    let mediaIds: string[] | undefined;
     let screenshotBuffer: Buffer | undefined;
     try {
       screenshotBuffer = await takeScreenshot(vercelUrl);
-      const mediaId = await uploadMedia(screenshotBuffer);
-      mediaIds = [mediaId];
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       console.warn(`⚠️ Screenshot failed (non-fatal): ${msg}`);
@@ -130,15 +129,15 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
       console.warn(`⚠️ Clonk site publish failed (non-fatal): ${msg}`);
     }
 
-    // Reply with links + optional screenshot
+    // Reply with links + optional screenshot (via channel-specific reply function)
     const stepNum3 = input.backend === 'convex' ? '6️⃣' : '4️⃣';
-    console.log(`\n${stepNum3} Replying to tweet...`);
+    console.log(`\n${stepNum3} Replying (${input.source})...`);
     const backendNote = input.backend === 'convex' ? '\n⚡ Powered by Convex (real-time backend)' : '';
     const clonkLink = clonkPageUrl ? `\n🌐 ${clonkPageUrl}` : '';
 
     const replyText = `✅ App live: ${vercelUrl}${backendNote}${clonkLink}\n📝 Contribute: ${githubUrl}`;
 
-    await replyToTweet(input.tweetId, replyText, mediaIds);
+    await input.reply(replyText, screenshotBuffer);
 
     console.log(`\n✅ Pipeline completed successfully!\n`);
   } catch (error: unknown) {
@@ -149,12 +148,9 @@ export async function processTweetToApp(input: PipelineInput): Promise<void> {
       : err.message || 'Unknown error';
     console.error(`❌ Pipeline failed: ${safeMessage}`);
 
-    // Try to reply with error message
+    // Try to reply with error message via the channel-specific reply function
     try {
-      await replyToTweet(
-        input.tweetId,
-        `Sorry, I couldn't build that app right now. Please try again later! 🔧`
-      );
+      await input.reply(`Sorry, I couldn't build that app right now. Please try again later! 🔧`);
     } catch (replyError: unknown) {
       const rErr = replyError as Record<string, any>;
       const safeReplyMsg = rErr.response
