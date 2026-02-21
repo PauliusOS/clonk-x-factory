@@ -1,5 +1,6 @@
 import { Bot, InputFile, InlineKeyboard, Context, webhookCallback } from 'grammy';
 import crypto from 'crypto';
+import axios from 'axios';
 import type { Express } from 'express';
 import { classifyTweet, moderateContent } from '../services/classify';
 import type { PipelineInput } from '../pipeline';
@@ -130,11 +131,17 @@ function makeTelegramProgress(
   return { onProgress, stopTyping };
 }
 
+interface DownloadedImage {
+  data: Buffer;
+  mediaType: string;
+}
+
 /**
- * Extract the largest photo from a Telegram message as a downloadable URL.
- * Telegram sends multiple sizes — we take the biggest one.
+ * Extract the largest photo from a Telegram message, download it, and return
+ * both the raw buffer (for classify/moderate) and the image data.
+ * Telegram's file API is blocked by robots.txt so Claude can't fetch URLs directly.
  */
-async function extractTelegramPhotos(ctx: Context): Promise<string[]> {
+async function downloadTelegramPhotos(ctx: Context): Promise<DownloadedImage[]> {
   const photos = ctx.message?.photo;
   if (!photos || photos.length === 0) return [];
 
@@ -145,10 +152,37 @@ async function extractTelegramPhotos(ctx: Context): Promise<string[]> {
     if (file.file_path) {
       const token = process.env.TELEGRAM_BOT_TOKEN!;
       const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-      return [url];
+      const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+      const contentType = response.headers['content-type'] || 'image/jpeg';
+      const mediaType = contentType.split(';')[0].trim();
+      return [{ data: Buffer.from(response.data), mediaType }];
     }
   } catch (err) {
-    console.warn('Failed to extract Telegram photo:', err);
+    console.warn('Failed to download Telegram photo:', err instanceof Error ? err.message : err);
+  }
+  return [];
+}
+
+/**
+ * Download photos from a parent (replied-to) message.
+ */
+async function downloadParentPhotos(ctx: Context): Promise<DownloadedImage[]> {
+  const replyMsg = ctx.message?.reply_to_message;
+  if (!replyMsg?.photo || replyMsg.photo.length === 0) return [];
+
+  const largest = replyMsg.photo[replyMsg.photo.length - 1];
+  try {
+    const file = await ctx.api.getFile(largest.file_id);
+    if (file.file_path) {
+      const token = process.env.TELEGRAM_BOT_TOKEN!;
+      const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+      const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+      const contentType = response.headers['content-type'] || 'image/jpeg';
+      const mediaType = contentType.split(';')[0].trim();
+      return [{ data: Buffer.from(response.data), mediaType }];
+    }
+  } catch (err) {
+    console.warn('Failed to download parent photo:', err instanceof Error ? err.message : err);
   }
   return [];
 }
@@ -242,53 +276,41 @@ export function createTelegramBot(
     const BACKEND_KEYWORDS = ['convex', 'backend', 'database', 'real-time', 'realtime', 'login', 'sign in', 'signup', 'sign up', 'auth', 'users', 'accounts'];
     const wantsConvex = BACKEND_KEYWORDS.some(kw => textLower.includes(kw));
 
-    // AI classification + moderation (reuse existing services)
-    const isAppRequest = await classifyTweet(text);
-    if (!isAppRequest) {
-      console.log('🤖 AI classification: NOT a build request, skipping');
-      return;
-    }
-    console.log('🤖 AI classification: confirmed build request, proceeding');
+    // Download photos early — we need them for classification, moderation, AND the pipeline.
+    // Text messages normally don't have photos, but download parent photos if replying to one.
+    const downloadedImages = await downloadTelegramPhotos(ctx);
+    const parentImages = await downloadParentPhotos(ctx);
+    const allImages = [...downloadedImages, ...parentImages];
 
-    const isSafe = await moderateContent(idea);
-    if (!isSafe) {
-      console.log('🛡️ Content moderation: UNSAFE content detected, skipping');
-      return;
-    }
-    console.log('🛡️ Content moderation: content is safe, proceeding');
-
-    // Extract parent context if this is a reply to another message
+    // Extract parent context
     let parentContext: { text: string; imageUrls: string[] } | undefined;
     const replyMsg = ctx.message.reply_to_message;
     if (replyMsg) {
-      const parentImageUrls: string[] = [];
-      // Extract photos from the parent message
-      if (replyMsg.photo && replyMsg.photo.length > 0) {
-        const largest = replyMsg.photo[replyMsg.photo.length - 1];
-        try {
-          const file = await ctx.api.getFile(largest.file_id);
-          if (file.file_path) {
-            parentImageUrls.push(
-              `https://api.telegram.org/file/bot${token}/${file.file_path}`
-            );
-          }
-        } catch {
-          // Non-fatal
-        }
-      }
       parentContext = {
         text: replyMsg.text || replyMsg.caption || '',
-        imageUrls: parentImageUrls,
+        imageUrls: [], // images passed separately as buffers now
       };
       if (parentContext.text) {
         console.log(`🔗 Parent message: ${parentContext.text.substring(0, 80)}...`);
       }
     }
 
-    // Extract attached photos from the current message
-    const imageUrls = await extractTelegramPhotos(ctx);
+    // AI classification + moderation — Haiku sees the actual images
+    const isAppRequest = await classifyTweet(text, parentContext?.text, allImages.length > 0 ? allImages : undefined);
+    if (!isAppRequest) {
+      console.log('🤖 AI classification: NOT a build request, skipping');
+      return;
+    }
+    console.log('🤖 AI classification: confirmed build request, proceeding');
 
-    console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
+    const isSafe = await moderateContent(idea, parentContext?.text, allImages.length > 0 ? allImages : undefined);
+    if (!isSafe) {
+      console.log('🛡️ Content moderation: UNSAFE content detected, skipping');
+      return;
+    }
+    console.log('🛡️ Content moderation: content is safe, proceeding');
+
+    console.log(`💡 App idea: ${idea}${allImages.length ? ` (with ${allImages.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
 
     // React + acknowledge immediately so the user knows we're on it
     await reactToMessage(ctx);
@@ -301,7 +323,7 @@ export function createTelegramBot(
       userId,
       username,
       source: 'telegram',
-      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      imageBuffers: allImages.length > 0 ? allImages : undefined,
       parentContext,
       backend: wantsConvex ? 'convex' : undefined,
       template: wantsThreeJs ? 'threejs' : undefined,
@@ -341,13 +363,14 @@ export function createTelegramBot(
 
     console.log(`\n📱 Telegram photo+caption from @${username}: ${caption}`);
 
-    const isAppRequest = await classifyTweet(caption, undefined, true);
+    // Download the attached photo early
+    const downloadedImages = await downloadTelegramPhotos(ctx);
+
+    const isAppRequest = await classifyTweet(caption, undefined, downloadedImages.length > 0 ? downloadedImages : undefined);
     if (!isAppRequest) return;
 
-    const isSafe = await moderateContent(idea, undefined, true);
+    const isSafe = await moderateContent(idea, undefined, downloadedImages.length > 0 ? downloadedImages : undefined);
     if (!isSafe) return;
-
-    const imageUrls = await extractTelegramPhotos(ctx);
 
     const THREEJS_KEYWORDS = ['3d', 'game', 'threejs', 'three.js', 'webgl', 'webgpu', '3d game'];
     const wantsThreeJs = THREEJS_KEYWORDS.some(kw => captionLower.includes(kw));
@@ -366,7 +389,7 @@ export function createTelegramBot(
       userId,
       username,
       source: 'telegram',
-      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      imageBuffers: downloadedImages.length > 0 ? downloadedImages : undefined,
       backend: wantsConvex ? 'convex' : undefined,
       template: wantsThreeJs ? 'threejs' : undefined,
       reply: async (text, screenshotBuffer) => {

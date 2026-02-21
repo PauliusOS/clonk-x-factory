@@ -123,8 +123,8 @@ export async function pollXMentions(
     }
 
     // Use AI to classify whether this is a genuine build request
-    const hasImages = imageUrls.length > 0 || (parentContext?.imageUrls.length ?? 0) > 0;
-    const isAppRequest = await classifyTweet(tweet.text, parentContext?.text, hasImages);
+    // X images are public URLs — no need to pre-download for classify/moderate
+    const isAppRequest = await classifyTweet(tweet.text, parentContext?.text);
     if (!isAppRequest) {
       console.log('🤖 AI classification: NOT a build request, skipping');
       continue;
@@ -132,7 +132,7 @@ export async function pollXMentions(
     console.log('🤖 AI classification: confirmed build request, proceeding');
 
     // Content moderation
-    const isSafe = await moderateContent(idea, parentContext?.text, hasImages);
+    const isSafe = await moderateContent(idea, parentContext?.text);
     if (!isSafe) {
       console.log('🛡️ Content moderation: UNSAFE content detected, skipping');
       continue;

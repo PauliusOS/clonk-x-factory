@@ -705,8 +705,9 @@ async function buildPrompt(
   textPrompt: string,
   imageUrls?: string[],
   parentContext?: { text: string; imageUrls: string[] },
+  imageBuffers?: { data: Buffer; mediaType: string }[],
 ): Promise<string | AsyncIterable<any>> {
-  const hasImages = (imageUrls?.length ?? 0) > 0 || (parentContext?.imageUrls.length ?? 0) > 0;
+  const hasImages = (imageUrls?.length ?? 0) > 0 || (parentContext?.imageUrls.length ?? 0) > 0 || (imageBuffers?.length ?? 0) > 0;
 
   if (!hasImages) return textPrompt;
 
@@ -725,7 +726,20 @@ async function buildPrompt(
     }
   }
 
-  if (imageUrls?.length) {
+  // Pre-downloaded image buffers (e.g. from Telegram) — no need to fetch
+  if (imageBuffers?.length) {
+    for (const img of imageBuffers) {
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: img.mediaType, data: img.data.toString('base64') },
+      });
+    }
+    contentBlocks.push({
+      type: 'text',
+      text: 'The above image(s) were attached to the message. Use them as visual reference — they may be wireframes, mockups, screenshots, or inspiration images. Try to match the layout, colors, and style shown.',
+    });
+  } else if (imageUrls?.length) {
+    // Download from URLs (e.g. X/Twitter public image URLs)
     const blocks = await Promise.all(imageUrls.map(downloadImageAsBase64));
     const addedCount = blocks.filter(Boolean).length;
     for (const block of blocks) {
@@ -762,8 +776,10 @@ export async function generateApp(
   imageUrls?: string[],
   parentContext?: { text: string; imageUrls: string[] },
   username?: string,
+  imageBuffers?: { data: Buffer; mediaType: string }[],
 ): Promise<GeneratedApp> {
-  console.log(`🤖 Generating app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
+  const imgCount = (imageUrls?.length ?? 0) + (imageBuffers?.length ?? 0);
+  console.log(`🤖 Generating app for idea: ${idea}${imgCount ? ` (with ${imgCount} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
 
   const promptParts: string[] = [];
   if (parentContext) {
@@ -774,7 +790,7 @@ export async function generateApp(
   promptParts.push(`Include a small footer at the bottom of the page that says "${footer}" — style it subtly (muted text, small font size).`);
   promptParts.push('Use /frontend-design and follow the Design Guidelines to make it visually stunning and distinctive.');
 
-  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext, imageBuffers);
 
   const buildDir = createBuildDir();
   console.log(`📋 Staging template files to ${buildDir}/...`);
@@ -803,8 +819,10 @@ export async function generateConvexApp(
   parentContext?: { text: string; imageUrls: string[] },
   username?: string,
   use3D?: boolean,
+  imageBuffers?: { data: Buffer; mediaType: string }[],
 ): Promise<GeneratedApp> {
-  console.log(`🤖 Generating Convex app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}${use3D ? ' (with Three.js 3D)' : ''}`);
+  const imgCount = (imageUrls?.length ?? 0) + (imageBuffers?.length ?? 0);
+  console.log(`🤖 Generating Convex app for idea: ${idea}${imgCount ? ` (with ${imgCount} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}${use3D ? ' (with Three.js 3D)' : ''}`);
 
   const promptParts: string[] = [];
   if (parentContext) {
@@ -821,7 +839,7 @@ export async function generateConvexApp(
     promptParts.push(`If this scene would benefit from realistic 3D models (vehicles, characters, buildings, nature, etc.), search poly.pizza for suitable assets using the API instructions in your system prompt.`);
   }
 
-  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext, imageBuffers);
 
   const buildDir = createBuildDir();
   console.log(`📋 Staging Convex template files to ${buildDir}/...`);
@@ -846,8 +864,10 @@ export async function generateThreeJsApp(
   imageUrls?: string[],
   parentContext?: { text: string; imageUrls: string[] },
   username?: string,
+  imageBuffers?: { data: Buffer; mediaType: string }[],
 ): Promise<GeneratedApp> {
-  console.log(`🤖 Generating Three.js app for idea: ${idea}${imageUrls?.length ? ` (with ${imageUrls.length} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
+  const imgCount = (imageUrls?.length ?? 0) + (imageBuffers?.length ?? 0);
+  console.log(`🤖 Generating Three.js app for idea: ${idea}${imgCount ? ` (with ${imgCount} image(s))` : ''}${parentContext ? ' (with parent tweet context)' : ''}`);
 
   const promptParts: string[] = [];
   if (parentContext) {
@@ -864,7 +884,7 @@ export async function generateThreeJsApp(
     promptParts.push(`If this scene would benefit from realistic 3D models (vehicles, characters, buildings, nature, etc.), search poly.pizza for suitable assets using the API instructions in your system prompt.`);
   }
 
-  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext);
+  const prompt = await buildPrompt(promptParts.join('\n\n'), imageUrls, parentContext, imageBuffers);
 
   const buildDir = createBuildDir();
   console.log(`📋 Staging Three.js template files to ${buildDir}/...`);

@@ -13,6 +13,8 @@ export interface PipelineInput {
   username: string;
   source: 'x' | 'telegram';
   imageUrls?: string[];
+  /** Pre-downloaded image buffers (e.g. from Telegram where URLs are blocked by robots.txt) */
+  imageBuffers?: { data: Buffer; mediaType: string }[];
   parentContext?: { text: string; imageUrls: string[] };
   backend?: 'convex';
   template?: 'threejs';
@@ -53,6 +55,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
           input.parentContext,
           input.username,
           input.template === 'threejs', // Pass 3D flag so Claude adds Three.js
+          input.imageBuffers,
         );
 
         const buildDir = generatedApp.buildDir!;
@@ -76,14 +79,14 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
       // Three.js flow: generate 3D React app (static, no backend)
       console.log('1️⃣ Generating Three.js 3D app code...');
       progress('🧠 generating 3D app with Claude...');
-      generatedApp = await generateThreeJsApp(input.idea, input.imageUrls, input.parentContext, input.username);
+      generatedApp = await generateThreeJsApp(input.idea, input.imageUrls, input.parentContext, input.username, input.imageBuffers);
     }
 
     if (!input.backend && !generatedApp) {
       // Standard flow: generate static React app
       console.log('1️⃣ Generating app code...');
       progress('🧠 generating code with Claude...');
-      generatedApp = await generateApp(input.idea, input.imageUrls, input.parentContext, input.username);
+      generatedApp = await generateApp(input.idea, input.imageUrls, input.parentContext, input.username, input.imageBuffers);
     }
 
     // Inject the "keep building on vibed.inc" badge into the app
