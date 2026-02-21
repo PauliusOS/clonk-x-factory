@@ -272,9 +272,12 @@ export async function startTelegramBot(
       webhookCallback(bot, 'express', { secretToken }),
     );
 
-    const fullUrl = `${webhookUrl}/webhooks/telegram`;
+    // Trim any trailing whitespace/slash from the URL
+    const baseUrl = webhookUrl.replace(/\/+$/, '').trim();
+    const fullUrl = `${baseUrl}/webhooks/telegram`;
+    console.log(`📱 Registering Telegram webhook at: ${fullUrl}`);
     await bot.api.setWebhook(fullUrl, { secret_token: secretToken });
-    console.log(`📱 Telegram bot webhook registered: ${fullUrl}`);
+    console.log(`📱 Telegram bot webhook registered successfully`);
   } else {
     // Fallback: long-polling (for local dev or when no public URL)
     // Delete any previously set webhook first
