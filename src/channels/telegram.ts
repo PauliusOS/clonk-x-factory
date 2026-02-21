@@ -22,14 +22,14 @@ const ACK_GIFS = [
 ];
 
 const ACK_MESSAGES = [
-  "🔧 On it! Cooking up your app...",
-  "⚡ Challenge accepted! Building now...",
-  "🚀 Let's go! Firing up the engines...",
-  "🧑‍🍳 Order received! Chef's in the kitchen...",
-  "🏗️ Hard hat on. Building your app...",
-  "🔨 Hammering away at your idea...",
-  "🧪 Mixing the ingredients...",
-  "⏳ Give me a minute, magic in progress...",
+  "🔨 clonk clonk clonk...",
+  "⚡ clonking in progress...",
+  "🚀 clonking your app into existence...",
+  "🧑‍🍳 clonk clonk! cooking it up...",
+  "🏗️ clonking away...",
+  "🔧 clonk clonk clonk clonk...",
+  "🧪 clonking the ingredients together...",
+  "⏳ clonking... give me a sec...",
 ];
 
 function pickRandom<T>(arr: T[]): T {
