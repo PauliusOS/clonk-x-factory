@@ -32,22 +32,32 @@ const ACK_MESSAGES = [
   "⏳ clonking... give me a sec...",
 ];
 
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+/** Pick from array without repeating until all items have been used */
+function makeShuffledPicker<T>(arr: T[]): () => T {
+  let remaining: T[] = [];
+  return () => {
+    if (remaining.length === 0) {
+      remaining = [...arr].sort(() => Math.random() - 0.5);
+    }
+    return remaining.pop()!;
+  };
 }
+
+const pickGif = makeShuffledPicker(ACK_GIFS);
+const pickMessage = makeShuffledPicker(ACK_MESSAGES);
 
 /** Send an acknowledgement GIF + message and return the ack message ID for later editing */
 async function sendAcknowledgement(ctx: Context): Promise<number | undefined> {
   try {
-    const msg = await ctx.replyWithAnimation(pickRandom(ACK_GIFS), {
-      caption: pickRandom(ACK_MESSAGES),
+    const msg = await ctx.replyWithAnimation(pickGif(), {
+      caption: pickMessage(),
       reply_parameters: { message_id: ctx.message!.message_id },
     });
     return msg.message_id;
   } catch (err) {
     // Non-fatal — if the GIF fails, try a plain text ack
     try {
-      const msg = await ctx.reply(pickRandom(ACK_MESSAGES), {
+      const msg = await ctx.reply(pickMessage(), {
         reply_parameters: { message_id: ctx.message!.message_id },
       });
       return msg.message_id;
@@ -158,26 +168,18 @@ function makeTelegramReply(ctx: Context): PipelineInput['reply'] {
       else if (url.includes('clonk.ai')) { keyboard.url('🔀 Remix', url); hasButtons = true; }
     }
 
-    // Clean text for Telegram (URLs are in buttons)
-    const cleanText = text
-      .replace(/https?:\/\/[^\s]+/g, '')
-      .replace(/📝 Contribute:/g, '')
-      .replace(/\n{2,}/g, '\n')
-      .trim();
-
     const replyParams = { message_id: ctx.message!.message_id };
     const replyMarkup = hasButtons ? keyboard : undefined;
+    const caption = '✅ Your app is ready!';
 
     if (screenshotBuffer) {
-      // Photo caption max is 1024 chars
-      const caption = cleanText.length > 1024 ? cleanText.slice(0, 1021) + '...' : cleanText;
       await ctx.replyWithPhoto(new InputFile(screenshotBuffer, 'screenshot.png'), {
-        caption: caption || '✅ Your app is ready!',
+        caption,
         reply_parameters: replyParams,
         reply_markup: replyMarkup,
       });
     } else {
-      await ctx.reply(cleanText || '✅ Your app is ready!', {
+      await ctx.reply(caption, {
         reply_parameters: replyParams,
         reply_markup: replyMarkup,
       });
