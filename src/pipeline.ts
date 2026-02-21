@@ -18,10 +18,14 @@ export interface PipelineInput {
   template?: 'threejs';
   /** Channel-specific reply function — injected by the caller */
   reply: (text: string, screenshotBuffer?: Buffer) => Promise<void>;
+  /** Optional progress callback — called at each pipeline stage (e.g. for Telegram live updates) */
+  onProgress?: (stage: string) => void;
 }
 
 export async function processMentionToApp(input: PipelineInput): Promise<void> {
   console.log(`\n🚀 Starting pipeline for: "${input.idea}"${input.template ? ` (template: ${input.template})` : ''}${input.backend ? ` (backend: ${input.backend})` : ''}\n`);
+
+  const progress = input.onProgress || (() => {});
 
   try {
     let generatedApp: Awaited<ReturnType<typeof generateApp>> | undefined;
@@ -29,6 +33,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
     if (input.backend === 'convex') {
       // Convex flow: create project -> generate app -> deploy backend -> deploy frontend
       console.log('1️⃣ Creating Convex project...');
+      progress('🔧 setting up Convex backend...');
       // Sanitize project name: lowercase, hyphens, no special chars
       const sanitizedName = input.idea
         .replace(/[^a-zA-Z0-9\s-]/g, '')
@@ -40,6 +45,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
         const convex = await createConvexProject(sanitizedName);
 
         console.log('\n2️⃣ Generating Convex app code...');
+        progress('🧠 generating code with Claude...');
         generatedApp = await generateConvexApp(
           input.idea,
           convex.deploymentUrl,
@@ -51,6 +57,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
 
         const buildDir = generatedApp.buildDir!;
         console.log('\n3️⃣ Configuring auth + deploying Convex backend...');
+        progress('⚡ deploying Convex backend...');
         await configureConvexAuthKeys(convex.deploymentUrl, convex.deployKey);
         await deployConvexBackend(buildDir, convex.deployKey);
       } catch (convexError: unknown) {
@@ -68,12 +75,14 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
     if (!generatedApp && input.template === 'threejs') {
       // Three.js flow: generate 3D React app (static, no backend)
       console.log('1️⃣ Generating Three.js 3D app code...');
+      progress('🧠 generating 3D app with Claude...');
       generatedApp = await generateThreeJsApp(input.idea, input.imageUrls, input.parentContext, input.username);
     }
 
     if (!input.backend && !generatedApp) {
       // Standard flow: generate static React app
       console.log('1️⃣ Generating app code...');
+      progress('🧠 generating code with Claude...');
       generatedApp = await generateApp(input.idea, input.imageUrls, input.parentContext, input.username);
     }
 
@@ -83,6 +92,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
     // Deploy to Vercel
     const stepNum = input.backend === 'convex' ? '4️⃣' : '2️⃣';
     console.log(`\n${stepNum} Deploying to Vercel...`);
+    progress('🚀 deploying to Vercel...');
     const { url: vercelUrl, deploymentId } = await deployToVercel(
       generatedApp!.appName,
       generatedApp!.files
@@ -91,6 +101,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
     // GitHub repo + wait for deploy in parallel
     const stepNum2 = input.backend === 'convex' ? '5️⃣' : '3️⃣';
     console.log(`\n${stepNum2} Creating GitHub repo + waiting for deploy...`);
+    progress('📦 creating GitHub repo + waiting for deploy...');
     const [githubUrl] = await Promise.all([
       createGitHubRepo(
         generatedApp!.appName,
@@ -101,6 +112,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
     ]);
 
     // Screenshot (non-fatal — don't block the reply if this fails)
+    progress('📸 taking a screenshot...');
     let screenshotBuffer: Buffer | undefined;
     try {
       screenshotBuffer = await takeScreenshot(vercelUrl);
@@ -110,6 +122,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
     }
 
     // Publish to clonk.ai gallery (non-fatal)
+    progress('🌐 publishing to clonk.ai...');
     let clonkPageUrl: string | null = null;
     try {
       clonkPageUrl = await publishToClonkSite({
@@ -132,6 +145,7 @@ export async function processMentionToApp(input: PipelineInput): Promise<void> {
     // Reply with links + optional screenshot (via channel-specific reply function)
     const stepNum3 = input.backend === 'convex' ? '6️⃣' : '4️⃣';
     console.log(`\n${stepNum3} Replying (${input.source})...`);
+    progress('✅ almost done! sending your app...');
     const backendNote = input.backend === 'convex' ? '\n⚡ Powered by Convex (real-time backend)' : '';
     const clonkLink = clonkPageUrl ? `\n🌐 ${clonkPageUrl}` : '';
 

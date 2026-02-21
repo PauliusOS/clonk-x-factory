@@ -36,23 +36,88 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-/** Send an acknowledgement GIF + message so the user knows we're working on it */
-async function sendAcknowledgement(ctx: Context): Promise<void> {
+/** Send an acknowledgement GIF + message and return the ack message ID for later editing */
+async function sendAcknowledgement(ctx: Context): Promise<number | undefined> {
   try {
-    await ctx.replyWithAnimation(pickRandom(ACK_GIFS), {
+    const msg = await ctx.replyWithAnimation(pickRandom(ACK_GIFS), {
       caption: pickRandom(ACK_MESSAGES),
       reply_parameters: { message_id: ctx.message!.message_id },
     });
+    return msg.message_id;
   } catch (err) {
     // Non-fatal — if the GIF fails, try a plain text ack
     try {
-      await ctx.reply(pickRandom(ACK_MESSAGES), {
+      const msg = await ctx.reply(pickRandom(ACK_MESSAGES), {
         reply_parameters: { message_id: ctx.message!.message_id },
       });
+      return msg.message_id;
     } catch {
       // Truly non-fatal
     }
   }
+  return undefined;
+}
+
+/** React to the user's message with a fire emoji */
+async function reactToMessage(ctx: Context): Promise<void> {
+  try {
+    await ctx.react('🔥');
+  } catch {
+    // Non-fatal — reactions may not be available in all chats
+  }
+}
+
+/** Update the reaction to a party emoji when the build is done */
+async function reactDone(ctx: Context): Promise<void> {
+  try {
+    await ctx.react('🎉');
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
+ * Create a progress callback for Telegram that:
+ * 1. Edits the ack message caption/text with the current stage
+ * 2. Sends a "typing" chat action (visible for ~5s, re-sent each stage)
+ */
+function makeTelegramProgress(
+  ctx: Context,
+  ackMessageId: number | undefined,
+): { onProgress: (stage: string) => void; stopTyping: () => void } {
+  const chatId = ctx.chat!.id;
+
+  // Keep a "typing" indicator running on a 4s interval
+  let typingInterval: ReturnType<typeof setInterval> | undefined;
+
+  const sendTyping = () => {
+    ctx.api.sendChatAction(chatId, 'typing').catch(() => {});
+  };
+
+  // Start typing immediately
+  sendTyping();
+  typingInterval = setInterval(sendTyping, 4000);
+
+  const onProgress = (stage: string) => {
+    // Re-trigger typing action on each stage change
+    sendTyping();
+
+    if (!ackMessageId) return;
+
+    // Try editing caption (for GIF ack) first, fall back to text (for text ack)
+    ctx.api.editMessageCaption(chatId, ackMessageId, { caption: stage }).catch(() => {
+      ctx.api.editMessageText(chatId, ackMessageId, stage).catch(() => {});
+    });
+  };
+
+  const stopTyping = () => {
+    if (typingInterval) {
+      clearInterval(typingInterval);
+      typingInterval = undefined;
+    }
+  };
+
+  return { onProgress, stopTyping };
 }
 
 /**
@@ -223,8 +288,10 @@ export function createTelegramBot(
 
     console.log(`💡 App idea: ${idea}${imageUrls.length ? ` (with ${imageUrls.length} image(s))` : ''}${wantsThreeJs ? ' (Three.js 3D)' : ''}${wantsConvex ? ' (Convex backend)' : ''}`);
 
-    // Acknowledge immediately so the user knows we're on it
-    await sendAcknowledgement(ctx);
+    // React + acknowledge immediately so the user knows we're on it
+    await reactToMessage(ctx);
+    const ackMsgId = await sendAcknowledgement(ctx);
+    const { onProgress, stopTyping } = makeTelegramProgress(ctx, ackMsgId);
 
     onMention({
       idea,
@@ -236,7 +303,12 @@ export function createTelegramBot(
       parentContext,
       backend: wantsConvex ? 'convex' : undefined,
       template: wantsThreeJs ? 'threejs' : undefined,
-      reply: makeTelegramReply(ctx),
+      reply: async (text, screenshotBuffer) => {
+        stopTyping();
+        await reactDone(ctx);
+        await makeTelegramReply(ctx)(text, screenshotBuffer);
+      },
+      onProgress,
     });
   });
 
@@ -281,8 +353,10 @@ export function createTelegramBot(
     const BACKEND_KEYWORDS = ['convex', 'backend', 'database', 'real-time', 'realtime', 'login', 'sign in', 'signup', 'sign up', 'auth', 'users', 'accounts'];
     const wantsConvex = BACKEND_KEYWORDS.some(kw => captionLower.includes(kw));
 
-    // Acknowledge immediately
-    await sendAcknowledgement(ctx);
+    // React + acknowledge immediately
+    await reactToMessage(ctx);
+    const ackMsgId = await sendAcknowledgement(ctx);
+    const { onProgress, stopTyping } = makeTelegramProgress(ctx, ackMsgId);
 
     onMention({
       idea,
@@ -293,7 +367,12 @@ export function createTelegramBot(
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       backend: wantsConvex ? 'convex' : undefined,
       template: wantsThreeJs ? 'threejs' : undefined,
-      reply: makeTelegramReply(ctx),
+      reply: async (text, screenshotBuffer) => {
+        stopTyping();
+        await reactDone(ctx);
+        await makeTelegramReply(ctx)(text, screenshotBuffer);
+      },
+      onProgress,
     });
   });
 
