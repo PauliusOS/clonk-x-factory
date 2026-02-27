@@ -237,8 +237,29 @@ function makeTelegramReply(ctx: Context): PipelineInput['reply'] {
 }
 
 /**
+ * Check whether a message is addressed to the bot.
+ * Returns true if:
+ * - Chat is private (DM)
+ * - Text/caption contains @botname
+ * - Message is a reply to one of the bot's own messages
+ */
+function isAddressedToBot(ctx: Context): boolean {
+  if (ctx.chat?.type === 'private') return true;
+
+  const text = (ctx.message?.text || ctx.message?.caption || '').toLowerCase();
+  if (text.includes(`@${BOT_USERNAME.toLowerCase()}`)) return true;
+
+  if (ctx.message?.reply_to_message?.from?.id === ctx.me.id) return true;
+
+  return false;
+}
+
+/**
  * Create and configure the Telegram bot.
  * Calls onMention() for each valid build request.
+ *
+ * The bot works with Telegram's default privacy mode — in groups it only
+ * receives @mentions, replies-to-bot, commands, and service messages.
  *
  * Use `startTelegramWebhook()` to mount it on Express with webhooks (recommended
  * for production on Railway/Heroku/etc where you have a stable public URL).
@@ -254,25 +275,72 @@ export function createTelegramBot(
 
   const bot = new Bot(token);
 
+  // --- /start and /help commands (registered first — order matters in grammY) ---
+  bot.command(['start', 'help'], async (ctx) => {
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+    const mention = isGroup ? `@${BOT_USERNAME} ` : '';
+    await ctx.reply(
+      `👋 I'm Clonk — I turn ideas into live web apps in seconds!\n\n` +
+      `**How to use:**\n` +
+      `• \`${mention}build a pomodoro timer\`\n` +
+      `• \`${mention}create a quiz about space\`\n` +
+      `• \`${mention}make a pixel art editor\`\n` +
+      `• Send a screenshot with \`${mention}build this\` as the caption\n\n` +
+      `**Supported keywords:** build, make, create\n` +
+      `**Templates:** say "3D game" for Three.js, or "with backend" for Convex`,
+      { parse_mode: 'Markdown' },
+    );
+  });
+
+  // --- Welcome message when bot is added to a group ---
+  bot.on('my_chat_member', async (ctx) => {
+    const update = ctx.myChatMember;
+    const oldStatus = update.old_chat_member.status;
+    const newStatus = update.new_chat_member.status;
+    const chatType = update.chat.type;
+
+    // Only fire when transitioning into a group/supergroup as member or admin
+    if (
+      (chatType === 'group' || chatType === 'supergroup') &&
+      (oldStatus === 'left' || oldStatus === 'kicked') &&
+      (newStatus === 'member' || newStatus === 'administrator')
+    ) {
+      await ctx.api.sendMessage(
+        update.chat.id,
+        `👋 Hey! I'm Clonk — I build web apps from a single message.\n\n` +
+        `Try: \`@${BOT_USERNAME} build a calculator\`\n\n` +
+        `Type /help for more examples.`,
+        { parse_mode: 'Markdown' },
+      );
+    }
+  });
+
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text;
     const chatType = ctx.chat.type;
     const username = ctx.from?.username || ctx.from?.first_name || 'unknown';
     const userId = String(ctx.from?.id || 'unknown');
 
-    // In groups: only respond if bot is @mentioned
-    // In DMs (private): always respond
-    const isMentioned = chatType === 'private' ||
-      text.toLowerCase().includes(`@${BOT_USERNAME.toLowerCase()}`);
-
-    if (!isMentioned) return;
+    if (!isAddressedToBot(ctx)) return;
 
     const textLower = text.toLowerCase();
 
     // Trigger keyword check (same as X)
     const TRIGGER_KEYWORDS = ['build', 'make', 'create'];
     const hasKeyword = TRIGGER_KEYWORDS.some(kw => textLower.includes(kw));
-    if (!hasKeyword) return;
+    if (!hasKeyword) {
+      // In groups, reply with a usage hint so users know what to say
+      if (chatType === 'group' || chatType === 'supergroup') {
+        await ctx.reply(
+          `💡 Try: \`@${BOT_USERNAME} build <your idea>\`\nType /help for more examples.`,
+          {
+            parse_mode: 'Markdown',
+            reply_parameters: { message_id: ctx.message.message_id },
+          },
+        );
+      }
+      return;
+    }
 
     // Extract the "idea" — remove @botname mentions and trigger keywords
     const idea = text
@@ -356,10 +424,7 @@ export function createTelegramBot(
     const caption = ctx.message.caption;
     if (!caption) return;
 
-    const chatType = ctx.chat.type;
-    const isMentioned = chatType === 'private' ||
-      caption.toLowerCase().includes(`@${BOT_USERNAME.toLowerCase()}`);
-    if (!isMentioned) return;
+    if (!isAddressedToBot(ctx)) return;
 
     const captionLower = caption.toLowerCase();
     const TRIGGER_KEYWORDS = ['build', 'make', 'create'];
@@ -452,7 +517,10 @@ export async function startTelegramBot(
     const baseUrl = webhookUrl.replace(/\/+$/, '').trim();
     const fullUrl = `${baseUrl}/webhooks/telegram`;
     console.log(`📱 Registering Telegram webhook at: ${fullUrl}`);
-    await bot.api.setWebhook(fullUrl, { secret_token: secretToken });
+    await bot.api.setWebhook(fullUrl, {
+      secret_token: secretToken,
+      allowed_updates: ['message', 'my_chat_member'],
+    });
     console.log(`📱 Telegram bot webhook registered successfully`);
   } else {
     // Fallback: long-polling (for local dev or when no public URL)
