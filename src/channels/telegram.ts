@@ -388,8 +388,10 @@ export async function createTelegramBot(
       `**How to use:**\n` +
       `• \`/build a pomodoro timer\`\n` +
       `• \`/build a quiz about space\`\n` +
-      `• \`/build a pixel art editor\`\n` +
-      `• Reply to a screenshot with \`/build this\`\n\n` +
+      `• \`/build a pixel art editor\`\n\n` +
+      `📸 **With a screenshot:** send me the image in a DM` +
+      (isGroup ? `, or reply to this message with a photo` : '') +
+      `\n\n` +
       (isGroup ? `You can also @mention me: \`@${BOT_USERNAME} build a calculator\`\n\n` : '') +
       `**Templates:** say "3D game" for Three.js, or "with backend" for Convex`,
       { parse_mode: 'Markdown' },
@@ -457,34 +459,47 @@ export async function createTelegramBot(
     await handleBuildRequest(ctx, text);
   });
 
-  // Handle photo messages with captions (user sends a photo with "build X" as caption)
+  // Handle photo messages with captions (user sends a photo with "/build X" or "build X" as caption).
+  // Also handles photos sent as a reply to the bot (implicit "build this" from the image).
   bot.on('message:photo', async (ctx) => {
-    const caption = ctx.message.caption;
-    if (!caption) return;
+    const caption = ctx.message.caption || '';
 
-    if (!isAddressedToBot(ctx)) return;
+    // Check if caption starts with a /build command (works in groups even with privacy mode)
+    const commandMatch = caption.match(/^\/(build|make|create)(?:@\w+)?\s*/i);
+    const isCommand = !!commandMatch;
+
+    // Accept if it's a /command, or if the bot is addressed via @mention / reply / DM
+    if (!isCommand && !isAddressedToBot(ctx)) return;
 
     const captionLower = caption.toLowerCase();
     const TRIGGER_KEYWORDS = ['build', 'make', 'create'];
-    const hasKeyword = TRIGGER_KEYWORDS.some(kw => captionLower.includes(kw));
-    if (!hasKeyword) return;
+    const hasKeyword = isCommand || TRIGGER_KEYWORDS.some(kw => captionLower.includes(kw));
+
+    // If no caption/keyword but the message is addressed to the bot (reply or DM),
+    // treat the photo as "build this" — the image IS the idea.
+    const isImplicitBuild = !hasKeyword && isAddressedToBot(ctx);
+
+    if (!hasKeyword && !isImplicitBuild) return;
 
     const username = ctx.from?.username || ctx.from?.first_name || 'unknown';
     const userId = String(ctx.from?.id || 'unknown');
 
-    const idea = caption
-      .replace(new RegExp(`@${BOT_USERNAME}`, 'gi'), '')
-      .replace(/\b(build|make|create)\b/gi, '')
-      .trim();
+    // Strip /command prefix, @botname, and trigger keywords
+    const idea = isImplicitBuild
+      ? 'build this'
+      : (caption
+          .replace(/^\/(build|make|create)(?:@\w+)?\s*/i, '')
+          .replace(new RegExp(`@${BOT_USERNAME}`, 'gi'), '')
+          .replace(/\b(build|make|create)\b/gi, '')
+          .trim() || 'build this');
 
-    if (!idea || idea.length < 3) return;
-
-    console.log(`\n📱 Telegram photo+caption from @${username}: ${caption}`);
+    console.log(`\n📱 Telegram photo+caption from @${username}: ${caption || '(no caption)'}`);
 
     // Download the attached photo early
     const downloadedImages = await downloadTelegramPhotos(ctx);
 
-    const isAppRequest = await classifyTweet(caption, undefined, downloadedImages.length > 0 ? downloadedImages : undefined);
+    const classifyText = caption || 'build this from the image';
+    const isAppRequest = await classifyTweet(classifyText, undefined, downloadedImages.length > 0 ? downloadedImages : undefined);
     if (!isAppRequest) return;
 
     const isSafe = await moderateContent(idea, undefined, downloadedImages.length > 0 ? downloadedImages : undefined);
