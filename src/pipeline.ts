@@ -11,7 +11,7 @@ export interface PipelineInput {
   messageId: string;
   userId: string;
   username: string;
-  source: 'x' | 'telegram';
+  source: 'x' | 'telegram' | 'web';
   imageUrls?: string[];
   /** Pre-downloaded image buffers (e.g. from Telegram where URLs are blocked by robots.txt) */
   imageBuffers?: { data: Buffer; mediaType: string }[];
