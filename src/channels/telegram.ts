@@ -558,6 +558,7 @@ export async function startTelegramBot(
     await bot.api.setWebhook(fullUrl, {
       secret_token: secretToken,
       allowed_updates: ['message', 'my_chat_member'],
+      drop_pending_updates: true,
     });
     console.log(`📱 Telegram bot webhook registered successfully`);
   } else {
@@ -570,4 +571,13 @@ export async function startTelegramBot(
       },
     });
   }
+
+  // Register bot commands with Telegram so they appear in the command menu
+  // and are reliably delivered in group chats with privacy mode.
+  await bot.api.setMyCommands([
+    { command: 'build', description: 'Build a web app — e.g. /build a pomodoro timer' },
+    { command: 'help', description: 'Show usage guide and examples' },
+    { command: 'start', description: 'Get started with Clonk' },
+  ]);
+  console.log('📱 Telegram bot commands registered');
 }
