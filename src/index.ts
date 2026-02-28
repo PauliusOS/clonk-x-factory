@@ -64,15 +64,18 @@ setInterval(pollX, POLL_INTERVAL_MS);
 // --- Telegram bot ---
 // Uses webhooks when WEBHOOK_URL is set (production), long-polling otherwise (local dev).
 if (process.env.TELEGRAM_BOT_TOKEN) {
-  const telegramBot = createTelegramBot(handleMention);
-  startTelegramBot(telegramBot, app).catch((err) => {
-    console.error('❌ Failed to start Telegram bot:', err.message || err);
-  });
+  createTelegramBot(handleMention).then((telegramBot) => {
+    startTelegramBot(telegramBot, app).catch((err) => {
+      console.error('❌ Failed to start Telegram bot:', err.message || err);
+    });
 
-  // Graceful shutdown (only needed for long-polling mode, harmless otherwise)
-  const stopBot = () => telegramBot.stop();
-  process.once('SIGTERM', stopBot);
-  process.once('SIGINT', stopBot);
+    // Graceful shutdown (only needed for long-polling mode, harmless otherwise)
+    const stopBot = () => telegramBot.stop();
+    process.once('SIGTERM', stopBot);
+    process.once('SIGINT', stopBot);
+  }).catch((err) => {
+    console.error('❌ Failed to create Telegram bot:', err.message || err);
+  });
 } else {
   console.log('📱 Telegram channel disabled (no TELEGRAM_BOT_TOKEN)');
 }

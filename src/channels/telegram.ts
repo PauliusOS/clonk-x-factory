@@ -249,7 +249,14 @@ function isAddressedToBot(ctx: Context): boolean {
   const text = (ctx.message?.text || ctx.message?.caption || '').toLowerCase();
   if (text.includes(`@${BOT_USERNAME.toLowerCase()}`)) return true;
 
-  if (ctx.message?.reply_to_message?.from?.id === ctx.me.id) return true;
+  // Check if replying to one of the bot's own messages.
+  // ctx.me requires bot.init() — guard with try/catch for webhook mode
+  // where init may not have been called yet.
+  try {
+    if (ctx.message?.reply_to_message?.from?.id === ctx.me.id) return true;
+  } catch {
+    // ctx.me not available — fall through
+  }
 
   return false;
 }
@@ -265,9 +272,9 @@ function isAddressedToBot(ctx: Context): boolean {
  * for production on Railway/Heroku/etc where you have a stable public URL).
  * Falls back to long-polling via `bot.start()` if no WEBHOOK_URL is available.
  */
-export function createTelegramBot(
+export async function createTelegramBot(
   onMention: (input: PipelineInput) => void,
-): Bot {
+): Promise<Bot> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     throw new Error('Missing TELEGRAM_BOT_TOKEN');
@@ -275,82 +282,37 @@ export function createTelegramBot(
 
   const bot = new Bot(token);
 
-  // --- /start and /help commands (registered first — order matters in grammY) ---
-  bot.command(['start', 'help'], async (ctx) => {
-    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
-    const mention = isGroup ? `@${BOT_USERNAME} ` : '';
-    await ctx.reply(
-      `👋 I'm Clonk — I turn ideas into live web apps in seconds!\n\n` +
-      `**How to use:**\n` +
-      `• \`${mention}build a pomodoro timer\`\n` +
-      `• \`${mention}create a quiz about space\`\n` +
-      `• \`${mention}make a pixel art editor\`\n` +
-      `• Send a screenshot with \`${mention}build this\` as the caption\n\n` +
-      `**Supported keywords:** build, make, create\n` +
-      `**Templates:** say "3D game" for Three.js, or "with backend" for Convex`,
-      { parse_mode: 'Markdown' },
-    );
+  // Fetch bot info eagerly so ctx.me is available in all handlers
+  // (required for reply-to-bot detection in webhook mode).
+  await bot.init();
+  console.log(`📱 Telegram bot initialized as @${bot.botInfo.username}`);
+
+  // Log unhandled errors instead of crashing silently
+  bot.catch((err) => {
+    console.error('❌ Telegram bot error:', err.error || err);
   });
 
-  // --- Welcome message when bot is added to a group ---
-  bot.on('my_chat_member', async (ctx) => {
-    const update = ctx.myChatMember;
-    const oldStatus = update.old_chat_member.status;
-    const newStatus = update.new_chat_member.status;
-    const chatType = update.chat.type;
-
-    // Only fire when transitioning into a group/supergroup as member or admin
-    if (
-      (chatType === 'group' || chatType === 'supergroup') &&
-      (oldStatus === 'left' || oldStatus === 'kicked') &&
-      (newStatus === 'member' || newStatus === 'administrator')
-    ) {
-      await ctx.api.sendMessage(
-        update.chat.id,
-        `👋 Hey! I'm Clonk — I build web apps from a single message.\n\n` +
-        `Try: \`@${BOT_USERNAME} build a calculator\`\n\n` +
-        `Type /help for more examples.`,
-        { parse_mode: 'Markdown' },
-      );
-    }
-  });
-
-  bot.on('message:text', async (ctx) => {
-    const text = ctx.message.text;
-    const chatType = ctx.chat.type;
+  // --- Shared build-request handler used by /build command and message:text ---
+  async function handleBuildRequest(ctx: Context, rawText: string): Promise<void> {
     const username = ctx.from?.username || ctx.from?.first_name || 'unknown';
     const userId = String(ctx.from?.id || 'unknown');
-
-    if (!isAddressedToBot(ctx)) return;
-
-    const textLower = text.toLowerCase();
-
-    // Trigger keyword check (same as X)
-    const TRIGGER_KEYWORDS = ['build', 'make', 'create'];
-    const hasKeyword = TRIGGER_KEYWORDS.some(kw => textLower.includes(kw));
-    if (!hasKeyword) {
-      // In groups, reply with a usage hint so users know what to say
-      if (chatType === 'group' || chatType === 'supergroup') {
-        await ctx.reply(
-          `💡 Try: \`@${BOT_USERNAME} build <your idea>\`\nType /help for more examples.`,
-          {
-            parse_mode: 'Markdown',
-            reply_parameters: { message_id: ctx.message.message_id },
-          },
-        );
-      }
-      return;
-    }
+    const textLower = rawText.toLowerCase();
 
     // Extract the "idea" — remove @botname mentions and trigger keywords
-    const idea = text
+    const idea = rawText
       .replace(new RegExp(`@${BOT_USERNAME}`, 'gi'), '')
       .replace(/\b(build|make|create)\b/gi, '')
       .trim();
 
-    if (!idea || idea.length < 3) return;
+    if (!idea || idea.length < 3) {
+      await ctx.reply(
+        `💡 Please describe what you want to build, e.g. \`/build a pomodoro timer\``,
+        { parse_mode: 'Markdown', reply_parameters: { message_id: ctx.message!.message_id } },
+      );
+      return;
+    }
 
-    console.log(`\n📱 Telegram message from @${username}: ${text}`);
+    console.log(`\n📱 Telegram message from @${username}: ${rawText}`);
 
     // Template detection (same logic as X)
     const THREEJS_KEYWORDS = ['3d', 'game', 'threejs', 'three.js', 'webgl', 'webgpu', '3d game'];
@@ -360,14 +322,13 @@ export function createTelegramBot(
     const wantsConvex = BACKEND_KEYWORDS.some(kw => textLower.includes(kw));
 
     // Download photos early — we need them for classification, moderation, AND the pipeline.
-    // Text messages normally don't have photos, but download parent photos if replying to one.
     const downloadedImages = await downloadTelegramPhotos(ctx);
     const parentImages = await downloadParentPhotos(ctx);
     const allImages = [...downloadedImages, ...parentImages];
 
     // Extract parent context
     let parentContext: { text: string; imageUrls: string[] } | undefined;
-    const replyMsg = ctx.message.reply_to_message;
+    const replyMsg = ctx.message!.reply_to_message;
     if (replyMsg) {
       parentContext = {
         text: replyMsg.text || replyMsg.caption || '',
@@ -379,7 +340,7 @@ export function createTelegramBot(
     }
 
     // AI classification + moderation — Haiku sees the actual images
-    const isAppRequest = await classifyTweet(text, parentContext?.text, allImages.length > 0 ? allImages : undefined);
+    const isAppRequest = await classifyTweet(rawText, parentContext?.text, allImages.length > 0 ? allImages : undefined);
     if (!isAppRequest) {
       console.log('🤖 AI classification: NOT a build request, skipping');
       return;
@@ -402,7 +363,7 @@ export function createTelegramBot(
 
     onMention({
       idea,
-      messageId: String(ctx.message.message_id),
+      messageId: String(ctx.message!.message_id),
       userId,
       username,
       source: 'telegram',
@@ -417,6 +378,80 @@ export function createTelegramBot(
       },
       onProgress,
     });
+  }
+
+  // --- /start and /help commands (registered first — order matters in grammY) ---
+  bot.command(['start', 'help'], async (ctx) => {
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+    await ctx.reply(
+      `👋 I'm Clonk — I turn ideas into live web apps in seconds!\n\n` +
+      `**How to use:**\n` +
+      `• \`/build a pomodoro timer\`\n` +
+      `• \`/build a quiz about space\`\n` +
+      `• \`/build a pixel art editor\`\n` +
+      `• Reply to a screenshot with \`/build this\`\n\n` +
+      (isGroup ? `You can also @mention me: \`@${BOT_USERNAME} build a calculator\`\n\n` : '') +
+      `**Templates:** say "3D game" for Three.js, or "with backend" for Convex`,
+      { parse_mode: 'Markdown' },
+    );
+  });
+
+  // --- /build command — the primary way to use the bot (always delivered, even with privacy mode) ---
+  bot.command(['build', 'make', 'create'], async (ctx) => {
+    // ctx.match contains everything after "/build " (grammY strips the command)
+    const idea = ctx.match || '';
+    await handleBuildRequest(ctx, `build ${idea}`);
+  });
+
+  // --- Welcome message when bot is added to a group ---
+  bot.on('my_chat_member', async (ctx) => {
+    const update = ctx.myChatMember;
+    const oldStatus = update.old_chat_member.status;
+    const newStatus = update.new_chat_member.status;
+    const chatType = update.chat.type;
+
+    // Only fire when transitioning into a group/supergroup as member or admin
+    if (
+      (chatType === 'group' || chatType === 'supergroup') &&
+      (oldStatus === 'left' || oldStatus === 'kicked') &&
+      (newStatus === 'member' || newStatus === 'administrator')
+    ) {
+      await ctx.api.sendMessage(
+        update.chat.id,
+        `👋 Hey! I'm Clonk — I build web apps from a single message.\n\n` +
+        `Try: \`/build a calculator\`\n\n` +
+        `Type /help for more examples.`,
+        { parse_mode: 'Markdown' },
+      );
+    }
+  });
+
+  bot.on('message:text', async (ctx) => {
+    const text = ctx.message.text;
+    const chatType = ctx.chat.type;
+
+    if (!isAddressedToBot(ctx)) return;
+
+    const textLower = text.toLowerCase();
+
+    // Trigger keyword check (same as X)
+    const TRIGGER_KEYWORDS = ['build', 'make', 'create'];
+    const hasKeyword = TRIGGER_KEYWORDS.some(kw => textLower.includes(kw));
+    if (!hasKeyword) {
+      // In groups, reply with a usage hint so users know what to say
+      if (chatType === 'group' || chatType === 'supergroup') {
+        await ctx.reply(
+          `💡 Try: \`/build <your idea>\`\nType /help for more examples.`,
+          {
+            parse_mode: 'Markdown',
+            reply_parameters: { message_id: ctx.message.message_id },
+          },
+        );
+      }
+      return;
+    }
+
+    await handleBuildRequest(ctx, text);
   });
 
   // Handle photo messages with captions (user sends a photo with "build X" as caption)
