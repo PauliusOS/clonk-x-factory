@@ -398,6 +398,7 @@ export async function createTelegramBot(
 
   // --- /build command — the primary way to use the bot (always delivered, even with privacy mode) ---
   bot.command(['build', 'make', 'create'], async (ctx) => {
+    console.log(`📱 /build command received from @${ctx.from?.username}: "${ctx.match}"`);
     // ctx.match contains everything after "/build " (grammY strips the command)
     const idea = ctx.match || '';
     await handleBuildRequest(ctx, `build ${idea}`);
@@ -429,6 +430,8 @@ export async function createTelegramBot(
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text;
     const chatType = ctx.chat.type;
+
+    console.log(`📱 message:text [${chatType}] from @${ctx.from?.username}: "${text.substring(0, 80)}"`);
 
     if (!isAddressedToBot(ctx)) return;
 
