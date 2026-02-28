@@ -10,30 +10,65 @@ export interface Job {
   createdAt: number;
 }
 
-const jobs = new Map<string, Job>();
-
-// Clean up jobs older than 1 hour every 10 minutes
-setInterval(() => {
-  const cutoff = Date.now() - 60 * 60 * 1000;
-  for (const [id, job] of jobs) {
-    if (job.createdAt < cutoff) jobs.delete(id);
-  }
-}, 10 * 60 * 1000);
-
-function createJob(): Job {
-  const job: Job = {
-    id: crypto.randomUUID(),
-    status: 'queued',
-    stage: '',
-    result: null,
-    createdAt: Date.now(),
-  };
-  jobs.set(job.id, job);
-  return job;
+interface PersistPayload {
+  jobId: string;
+  idea?: string;
+  username?: string;
+  status: string;
+  stage: string;
+  result?: string;
+  createdAt?: number;
 }
 
-export function getJob(id: string): Job | undefined {
-  return jobs.get(id);
+function persistJob(payload: PersistPayload): void {
+  const apiUrl = process.env.CLONK_SITE_API_URL;
+  const apiKey = process.env.CLONK_SITE_API_KEY;
+  if (!apiUrl || !apiKey) return;
+
+  fetch(`${apiUrl}/api/job`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }).catch((err) => {
+    console.error('Failed to persist job:', err.message || err);
+  });
+}
+
+export async function fetchJob(id: string): Promise<Job | null> {
+  const apiUrl = process.env.CLONK_SITE_API_URL;
+  const apiKey = process.env.CLONK_SITE_API_KEY;
+  if (!apiUrl || !apiKey) return null;
+
+  const res = await fetch(`${apiUrl}/api/job?id=${encodeURIComponent(id)}`, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+  if (!res.ok) return null;
+
+  const doc = await res.json() as Record<string, any>;
+  return {
+    id: doc.jobId,
+    status: doc.status,
+    stage: doc.stage,
+    result: doc.result ?? null,
+    createdAt: doc.createdAt,
+  };
+}
+
+/** Map pipeline emoji stages to clean names the website UI can match on */
+function normalizeStage(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.includes('convex') && s.includes('setting up')) return 'generating';
+  if (s.includes('generating') || s.includes('claude')) return 'generating';
+  if (s.includes('deploying') && s.includes('convex')) return 'generating';
+  if (s.includes('deploying') || s.includes('vercel')) return 'deploying';
+  if (s.includes('github') || s.includes('waiting')) return 'deploying';
+  if (s.includes('screenshot')) return 'screenshot';
+  if (s.includes('clonk.ai') || s.includes('publishing')) return 'publishing';
+  if (s.includes('almost done') || s.includes('sending')) return 'publishing';
+  return raw;
 }
 
 export async function handleWebBuild(
@@ -46,20 +81,24 @@ export async function handleWebBuild(
     ? [{ data: imageBuffer, mediaType }]
     : undefined;
 
+  const jobId = crypto.randomUUID();
+
+  // Persist initial state so the website can start polling immediately
+  persistJob({ jobId, idea, username, status: 'processing', stage: 'classifying', createdAt: Date.now() });
+
   // AI classification — is this actually a build request?
   const isAppRequest = await classifyTweet(`build ${idea}`, undefined, images);
   if (!isAppRequest) {
+    persistJob({ jobId, status: 'error', stage: 'classifying', result: 'Not recognized as a build request' });
     return { error: 'Not recognized as a build request' };
   }
 
   // Content moderation
   const isSafe = await moderateContent(idea, undefined, images);
   if (!isSafe) {
+    persistJob({ jobId, status: 'error', stage: 'classifying', result: 'Content did not pass moderation' });
     return { error: 'Content did not pass moderation' };
   }
-
-  const job = createJob();
-  job.status = 'processing';
 
   // Template detection
   const ideaLower = idea.toLowerCase();
@@ -71,7 +110,7 @@ export async function handleWebBuild(
 
   const input: PipelineInput = {
     idea,
-    messageId: job.id,
+    messageId: jobId,
     userId: `web:${username}`,
     username,
     source: 'web',
@@ -79,20 +118,17 @@ export async function handleWebBuild(
     backend: wantsConvex ? 'convex' : undefined,
     template: wantsThreeJs ? 'threejs' : undefined,
     reply: async (text: string) => {
-      job.result = text;
-      job.status = 'done';
-      job.stage = 'done';
+      persistJob({ jobId, status: 'done', stage: 'done', result: text });
     },
     onProgress: (stage: string) => {
-      job.stage = stage;
+      persistJob({ jobId, status: 'processing', stage: normalizeStage(stage) });
     },
   };
 
-  // Fire and forget — the job tracks progress
+  // Fire and forget — the job tracks progress via Convex
   processMentionToApp(input).catch((err) => {
-    job.status = 'error';
-    job.result = err.message || 'Pipeline failed';
+    persistJob({ jobId, status: 'error', stage: 'error', result: err.message || 'Pipeline failed' });
   });
 
-  return { jobId: job.id };
+  return { jobId };
 }

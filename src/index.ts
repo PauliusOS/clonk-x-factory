@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { processMentionToApp, PipelineInput } from './pipeline';
 import { pollXMentions } from './channels/x';
 import { createTelegramBot, startTelegramBot } from './channels/telegram';
-import { handleWebBuild, getJob } from './channels/web';
+import { handleWebBuild, fetchJob } from './channels/web';
 
 dotenv.config();
 
@@ -118,9 +118,9 @@ app.post('/api/build', checkWebAuth, upload.single('image'), async (req, res) =>
   res.status(202).json(result);
 });
 
-app.get('/api/build/:jobId', checkWebAuth, (req, res) => {
+app.get('/api/build/:jobId', checkWebAuth, async (req, res) => {
   const jobId = req.params.jobId as string;
-  const job = getJob(jobId);
+  const job = await fetchJob(jobId);
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
   res.json(job);
 });
